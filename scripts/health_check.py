@@ -1,5 +1,5 @@
 """
-health_check.py — pre-startup system check
+health_check.py - pre-startup system check
 ref: MASTER_PLAN_v5.md § 22.2
 
 Checks:
@@ -8,9 +8,9 @@ Checks:
   3. RAM free (need ≥ 4 GB)
   4. Disk free (need ≥ 10 GB on workspace drive)
   5. Ollama service up + models present
-  6. Docker services (SearXNG, Langfuse, Phoenix) — optional in Phase 0
+  6. Docker services (SearXNG, Langfuse, Phoenix) - optional in Phase 0
   7. Folder structure intact
-  8. Audit log integrity (hash chain) — skip if not yet created
+  8. Audit log integrity (hash chain) - skip if not yet created
   9. CPU/GPU thermal status
 
 Exit codes:
@@ -49,12 +49,12 @@ def check_python() -> dict:
     v = sys.version_info
     pretty = f"{v.major}.{v.minor}.{v.micro}"
     if v < (3, 11):
-        return _r("python_version", Check.FAIL, f"need ≥3.11, have {pretty}")
+        return _r("python_version", Check.FAIL, f"need >=3.11, have {pretty}")
     if v >= (3, 14):
         return _r(
             "python_version",
             Check.WARN,
-            f"have {pretty} — bleeding edge, some packages may lack wheels",
+            f"have {pretty} - bleeding edge, some packages may lack wheels",
         )
     return _r("python_version", Check.OK, pretty)
 
@@ -70,7 +70,7 @@ def check_ram() -> dict:
     if free_gb < 4:
         return _r("ram", Check.FAIL, f"only {free_gb:.1f} GB free of {total_gb:.0f} GB")
     if free_gb < 8:
-        return _r("ram", Check.WARN, f"{free_gb:.1f} GB free — tight for heavy models")
+        return _r("ram", Check.WARN, f"{free_gb:.1f} GB free - tight for heavy models")
     return _r("ram", Check.OK, f"{free_gb:.1f} GB free of {total_gb:.0f} GB")
 
 
@@ -89,11 +89,11 @@ def check_vram() -> dict:
         return _r(
             "vram",
             Check.FAIL,
-            f"only {free_gb:.2f} GB free — orchestrator+scavenger needs ≥6.5 GB",
+            f"only {free_gb:.2f} GB free - orchestrator+scavenger needs >=6.5 GB",
             details={"gpu": g.name, "total_gb": total_gb},
         )
     if free_gb < 6.5:
-        return _r("vram", Check.WARN, f"{free_gb:.2f} GB free — orchestrator may not fit")
+        return _r("vram", Check.WARN, f"{free_gb:.2f} GB free - orchestrator may not fit")
     return _r("vram", Check.OK, f"{free_gb:.2f} / {total_gb:.1f} GB free", {"gpu": g.name})
 
 
@@ -103,13 +103,13 @@ def check_disk() -> dict:
     if free_gb < 10:
         return _r("disk", Check.FAIL, f"only {free_gb:.1f} GB free in workspace drive")
     if free_gb < 50:
-        return _r("disk", Check.WARN, f"{free_gb:.1f} GB free — models alone need ~40 GB")
+        return _r("disk", Check.WARN, f"{free_gb:.1f} GB free - models alone need ~40 GB")
     return _r("disk", Check.OK, f"{free_gb:.1f} GB free")
 
 
 def check_ollama() -> dict:
     if shutil.which("ollama") is None:
-        return _r("ollama", Check.FAIL, "ollama binary not in PATH — install from ollama.com")
+        return _r("ollama", Check.FAIL, "ollama binary not in PATH - install from ollama.com")
     try:
         out = subprocess.check_output(
             ["ollama", "list"], text=True, stderr=subprocess.STDOUT, timeout=10
@@ -122,7 +122,7 @@ def check_ollama() -> dict:
         return _r(
             "ollama",
             Check.WARN,
-            "no required models pulled yet (Phase 0 task — see RUNBOOK)",
+            "no required models pulled yet (Phase 0 task - see RUNBOOK)",
         )
     if len(found) < len(required):
         missing = [m for m in required if m.split(":")[0] not in out]
@@ -132,7 +132,7 @@ def check_ollama() -> dict:
 
 def check_docker() -> dict:
     if shutil.which("docker") is None:
-        return _r("docker", Check.WARN, "docker not in PATH — needed for Phase 1 SearXNG")
+        return _r("docker", Check.WARN, "docker not in PATH - needed for Phase 1 SearXNG")
     try:
         subprocess.check_output(["docker", "info"], stderr=subprocess.STDOUT, timeout=5)
     except subprocess.SubprocessError:
@@ -194,7 +194,7 @@ def check_thermal() -> dict:
         return _r(
             "thermal",
             Check.OK,
-            f"CPU={data['cpu_temp_c']}°C GPU={data['gpu_temp_c']}°C",
+            f"CPU={data['cpu_temp_c']} deg C GPU={data['gpu_temp_c']} deg C",
         )
     except Exception as e:  # noqa: BLE001
         return _r("thermal", Check.SKIP, f"thermal_guard not available: {e}")
@@ -204,7 +204,7 @@ def check_audit_chain() -> dict:
     db = REPO_ROOT / ".tpm_context" / "audit_log.db"
     if not db.exists():
         return _r("audit_chain", Check.SKIP, "no audit_log.db yet (Phase 2)")
-    # full verify will be implemented later — for now just check file exists
+    # full verify will be implemented later - for now just check file exists
     return _r("audit_chain", Check.OK, f"{db.stat().st_size} bytes")
 
 
@@ -254,7 +254,7 @@ def main() -> int:
         print(">>> CRITICAL: do NOT start until fails resolved")
         return 2
     if warns:
-        print(">>> System runnable but degraded — review warnings")
+        print(">>> System runnable but degraded - review warnings")
         return 1
     print(">>> All systems go")
     return 0

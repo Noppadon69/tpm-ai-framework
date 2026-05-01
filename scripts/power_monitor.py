@@ -1,5 +1,5 @@
 """
-power_monitor.py — battery-aware scheduling
+power_monitor.py - battery-aware scheduling
 ref: MASTER_PLAN_v5.md § 3.3
 
 Modes:
@@ -55,7 +55,7 @@ def assess() -> PowerReading:
             plugged=None,
             secs_left=None,
             mode="desktop_mode",
-            actions=["psutil not installed — assume desktop"],
+            actions=["psutil not installed - assume desktop"],
         )
 
     battery = psutil.sensors_battery()
@@ -119,7 +119,7 @@ def log_reading(r: PowerReading) -> None:
 
 
 def run_daemon() -> None:
-    logging.info("power_monitor daemon started — interval=%ss", POLL_INTERVAL_SEC)
+    logging.info("power_monitor daemon started - interval=%ss", POLL_INTERVAL_SEC)
     last_mode = None
     while True:
         try:
@@ -135,7 +135,7 @@ def run_daemon() -> None:
                 )
                 last_mode = r.mode
             if r.mode == "shutdown_now":
-                logging.error("BATTERY CRITICAL — exiting daemon (orchestrator should act)")
+                logging.error("BATTERY CRITICAL - exiting daemon (orchestrator should act)")
                 break
             time.sleep(POLL_INTERVAL_SEC)
         except KeyboardInterrupt:

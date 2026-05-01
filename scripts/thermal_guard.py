@@ -1,11 +1,11 @@
 """
-thermal_guard.py — CPU/GPU thermal monitor
+thermal_guard.py - CPU/GPU thermal monitor
 ref: MASTER_PLAN_v5.md § 3.4
 
 Behavior:
-  CPU > 75°C / GPU > 75°C  → log warning
-  CPU > 80°C / GPU > 82°C  → slow down (factor 0.5)
-  CPU > 85°C / GPU > 87°C  → pause heavy tasks + notify
+  CPU > 75 deg C / GPU > 75 deg C  → log warning
+  CPU > 80 deg C / GPU > 82 deg C  → slow down (factor 0.5)
+  CPU > 85 deg C / GPU > 87 deg C  → pause heavy tasks + notify
 
 Usage:
   python scripts/thermal_guard.py             # daemon
@@ -72,7 +72,7 @@ def read_cpu_temp() -> float | None:
     """
     Try multiple sources:
     - psutil.sensors_temperatures (Linux only)
-    - WMI (Windows) — best-effort, often returns None on consumer laptops
+    - WMI (Windows) - best-effort, often returns None on consumer laptops
     """
     if psutil is None:
         return None
@@ -136,28 +136,28 @@ def classify(cpu: float | None, gpu: float | None) -> tuple[str, str, list[str]]
     if cpu is not None:
         if cpu >= THRESHOLDS["cpu_critical"]:
             state, action = "CRITICAL", "pause_heavy"
-            notes.append(f"CPU {cpu:.1f}°C ≥ {THRESHOLDS['cpu_critical']}°C")
+            notes.append(f"CPU {cpu:.1f} deg C ≥ {THRESHOLDS['cpu_critical']} deg C")
         elif cpu >= THRESHOLDS["cpu_throttle"]:
             state, action = max(state, "THROTTLE", key=_severity), "slow_down"
-            notes.append(f"CPU {cpu:.1f}°C ≥ {THRESHOLDS['cpu_throttle']}°C")
+            notes.append(f"CPU {cpu:.1f} deg C ≥ {THRESHOLDS['cpu_throttle']} deg C")
         elif cpu >= THRESHOLDS["cpu_warn"]:
             state, action = max(state, "WARN", key=_severity), "log_warn"
-            notes.append(f"CPU {cpu:.1f}°C ≥ {THRESHOLDS['cpu_warn']}°C")
+            notes.append(f"CPU {cpu:.1f} deg C ≥ {THRESHOLDS['cpu_warn']} deg C")
 
     if gpu is not None:
         if gpu >= THRESHOLDS["gpu_critical"]:
             state, action = "CRITICAL", "pause_heavy"
-            notes.append(f"GPU {gpu:.1f}°C ≥ {THRESHOLDS['gpu_critical']}°C")
+            notes.append(f"GPU {gpu:.1f} deg C ≥ {THRESHOLDS['gpu_critical']} deg C")
         elif gpu >= THRESHOLDS["gpu_throttle"]:
             state = max(state, "THROTTLE", key=_severity)
             if action == "none":
                 action = "slow_down"
-            notes.append(f"GPU {gpu:.1f}°C ≥ {THRESHOLDS['gpu_throttle']}°C")
+            notes.append(f"GPU {gpu:.1f} deg C ≥ {THRESHOLDS['gpu_throttle']} deg C")
         elif gpu >= THRESHOLDS["gpu_warn"]:
             state = max(state, "WARN", key=_severity)
             if action == "none":
                 action = "log_warn"
-            notes.append(f"GPU {gpu:.1f}°C ≥ {THRESHOLDS['gpu_warn']}°C")
+            notes.append(f"GPU {gpu:.1f} deg C ≥ {THRESHOLDS['gpu_warn']} deg C")
 
     return state, action, notes
 
@@ -199,7 +199,7 @@ def log_reading(r: ThermalReading) -> None:
 # Daemon
 # ============================================================
 def run_daemon() -> None:
-    logging.info("thermal_guard daemon started — interval=%ss", POLL_INTERVAL_SEC)
+    logging.info("thermal_guard daemon started - interval=%ss", POLL_INTERVAL_SEC)
     while True:
         try:
             r = take_reading()
@@ -229,9 +229,9 @@ def main() -> int:
     logging.basicConfig(level=log_level, format="%(asctime)s | %(levelname)s | %(message)s")
 
     if psutil is None:
-        logging.warning("psutil not installed — limited sensors")
+        logging.warning("psutil not installed - limited sensors")
     if GPUtil is None:
-        logging.warning("GPUtil not installed — no GPU readings")
+        logging.warning("GPUtil not installed - no GPU readings")
 
     if args.status:
         r = take_reading()
@@ -240,7 +240,7 @@ def main() -> int:
 
     if args.check:
         r = take_reading()
-        print(f"[{r.state}] CPU={r.cpu_temp_c}°C  GPU={r.gpu_temp_c}°C  action={r.action}")
+        print(f"[{r.state}] CPU={r.cpu_temp_c} deg C  GPU={r.gpu_temp_c} deg C  action={r.action}")
         if r.notes:
             for n in r.notes:
                 print(f"  - {n}")
