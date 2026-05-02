@@ -173,10 +173,15 @@ def _check_max_iter(state: TPMState) -> TPMState:
 
 
 def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
-    """Phase-2-minimal: classify intent into search lane + run L3."""
+    """
+    Phase 2/3: route intent to either L3 search (lookup) or Worker (report/excel/calc).
+    """
     from tpm_search import Intent as SearchIntent
     from tpm_search import search as l3_search
     from tpm_search.egress import EgressBlocked
+
+    # Worker actions vs lookup actions
+    WORKER_ACTIONS = {"report", "excel", "calc", "edit", "analyze"}
 
     def node_plan(state: TPMState) -> TPMState:
         intent = state.intent
@@ -185,7 +190,11 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
             state.error = "plan: no confirmed intent"
             return state
 
-        # Map clarification intent to search intent (lane signals)
+        # ----- Route 1: Worker (report / excel / calc) -----
+        if intent.action.lower() in WORKER_ACTIONS:
+            return _run_worker_branch(state, intent, ui)
+
+        # ----- Route 2: L3 search (lookup) -----
         s_intent = SearchIntent(
             is_definition=intent.is_definition,
             is_standard_reference=intent.is_standard_reference,
@@ -198,7 +207,6 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
             is_simple_lookup=intent.is_simple_lookup,
         )
 
-        # Build search query from intent slots (combine for better recall)
         parts: list[str] = []
         if intent.subject:
             parts.append(intent.subject)
@@ -243,7 +251,6 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
             if r.snippet:
                 ui.info(f"      {r.snippet[:120]}")
 
-        # Phase 2 minimal: end here
         state.phase = OrchestratorPhase.DONE
         state.final_output = {
             "intent": intent.model_dump(),
@@ -258,6 +265,95 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
         return state
 
     return node_plan
+
+
+# ============================================================
+# Worker dispatch (Phase 3)
+# ============================================================
+def _run_worker_branch(state: TPMState, intent: Intent, ui: UI) -> TPMState:
+    """
+    Route intent.action to the appropriate worker.
+    """
+    from pathlib import Path
+
+    from tpm_workers.base import WorkerInput, WorkerType
+    from tpm_workers.data_loader import list_equipment_tags
+    from tpm_workers.excel import run_excel_worker
+    from tpm_workers.report import run_report_worker
+
+    # Resolve target equipment from intent.subject - try fuzzy match
+    target = intent.subject or ""
+    if target:
+        known = list_equipment_tags()
+        # exact tag match wins
+        if target not in known:
+            # case-insensitive substring match
+            matches = [t for t in known if target.lower() in t.lower()]
+            if len(matches) == 1:
+                target = matches[0]
+                ui.info(f"[plan] resolved subject {intent.subject!r} -> {target!r}")
+            elif len(matches) > 1:
+                ui.info(f"[plan] ambiguous subject {intent.subject!r} matches: {matches}")
+                state.phase = OrchestratorPhase.FAILED
+                state.error = f"ambiguous equipment tag: {matches}"
+                return state
+
+    worker_type = (
+        WorkerType.EXCEL if intent.action.lower() in ("excel", "calc") else WorkerType.REPORT
+    )
+    output_subdir = (
+        "reports" if worker_type == WorkerType.REPORT
+        else "excel"
+    )
+    inp = WorkerInput(
+        worker_type=worker_type,
+        session_id=state.session_id,
+        user_request=state.user_request,
+        intent=intent.model_dump(),
+        target_subject=target or "",
+        time_range_days=int(intent.constraints.get("time_range_days", 90)),
+        output_dir=Path("output") / output_subdir,
+    )
+
+    ui.info(f"\n[plan] dispatch worker: {inp.worker_type.value} for {inp.target_subject!r}")
+
+    if inp.worker_type == WorkerType.REPORT:
+        result = run_report_worker(inp, model=DEFAULT_MODEL)
+    else:
+        result = run_excel_worker(inp)
+
+    # Pretty-print summary
+    ui.info("")
+    ui.info(f"[{inp.worker_type.value} worker] {result.summary}")
+    for s in result.steps:
+        notes = "; ".join(s.notes) if s.notes else "-"
+        ui.info(f"  [{s.name:10s}] success={s.success}  {notes}")
+    if result.auditor_findings:
+        ui.info(f"  Auditor findings: {result.auditor_findings}")
+    for f in result.output_files:
+        ui.info(f"  -> {f}")
+
+    state.subtask_results[inp.worker_type.value] = result.model_dump(mode="json")
+    state.phase = OrchestratorPhase.DONE if result.success else OrchestratorPhase.FAILED
+    state.final_output = {
+        "intent": intent.model_dump(),
+        "worker": inp.worker_type.value,
+        "output_files": result.output_files,
+        "metrics": result.metrics,
+        "summary": result.summary,
+        "auditor_passed": result.auditor_passed,
+        "auditor_findings": result.auditor_findings,
+    }
+    state.append_handoff(HandoffPacket(
+        stage=f"worker_{inp.worker_type.value}",
+        success=result.success,
+        confidence=result.confidence,
+        reasoning=result.summary,
+        payload={"n_files": len(result.output_files)},
+    ))
+    return state
+
+
 
 
 # ============================================================
