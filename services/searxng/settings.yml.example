@@ -1,0 +1,75 @@
+# services/searxng/settings.yml.example
+# Copy to settings.yml and replace SECRET_KEY_PLACEHOLDER with output of:
+#   python -c "import secrets; print(secrets.token_hex(32))"
+# Or run scripts/setup_searxng.py to do it automatically.
+#
+# Reference: https://docs.searxng.org/admin/settings/
+
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "TPM Searxng"
+  contact_url: false
+  enable_metrics: false
+
+server:
+  secret_key: "SECRET_KEY_PLACEHOLDER"
+  limiter: false                    # single-user local — disable rate limit
+  image_proxy: false
+  default_http_headers:
+    X-Content-Type-Options: nosniff
+    X-Download-Options: noopen
+    X-Robots-Tag: noindex, nofollow
+    Referrer-Policy: no-referrer
+  bind_address: "0.0.0.0"
+  port: 8080
+
+ui:
+  static_use_hash: true
+  default_locale: ""
+  query_in_title: false
+  infinite_scroll: false
+  center_alignment: true
+  default_theme: simple
+  theme_args:
+    simple_style: auto
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: ""
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  formats:
+    - html
+    - json                          # IMPORTANT: enable JSON for API access
+
+redis:
+  url: redis://tpm-searxng-redis:6379/0
+
+# Engines — keep concise to reduce CAPTCHA noise
+engines:
+  - name: google
+    disabled: false
+    timeout: 5.0
+  - name: bing
+    disabled: false
+    timeout: 5.0
+  - name: duckduckgo
+    disabled: false
+    timeout: 5.0
+  - name: wikipedia
+    disabled: false
+    timeout: 5.0
+  - name: github
+    disabled: false
+    timeout: 5.0
+  - name: stackoverflow
+    disabled: false
+    timeout: 5.0
+  # Disable engines that frequently CAPTCHA-block headless requests
+  - name: yahoo
+    disabled: true
+  - name: qwant
+    disabled: true

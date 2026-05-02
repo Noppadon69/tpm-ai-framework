@@ -29,7 +29,8 @@ tavily-python>=0.5.0
 # Exa.ai — structured + grounding for cited engineering reports (1,000/mo free)
 exa-py>=1.0
 # DuckDuckGo Instant Answer — simple lookup, no API key (unlimited)
-duckduckgo-search>=6.3
+# NOTE: package was renamed from duckduckgo-search to ddgs (mid-2025)
+ddgs>=9.0
 # Wikipedia REST — reference / definitions, no API key (unlimited)
 wikipedia-api>=0.7
 # Note: SearXNG runs as Docker service (workhorse) — no Python package needed

@@ -133,6 +133,13 @@ docker-compose.override.yml
 .docker/
 
 # ------------------------------------------------------------
+# Service runtime configs (have secrets — generated from .example)
+# ------------------------------------------------------------
+services/searxng/settings.yml
+services/langfuse/.env
+services/arize_phoenix/.env
+
+# ------------------------------------------------------------
 # Obsidian
 # ------------------------------------------------------------
 .obsidian/workspace*
