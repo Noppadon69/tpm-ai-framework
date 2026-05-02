@@ -146,12 +146,34 @@ FRAMEWORK_REPO_REMOTE=git@github.com:YOU/tpm-ai-framework.git
 
 ```bash
 cp .env.example .env
-# แก้ .env ใส่:
-# - BRAVE_API_KEY (สมัครฟรีที่ brave.com/search/api/)
-# - TAVILY_API_KEY (สมัครฟรีที่ tavily.com)
-# - SearXNG ใช้ default (Phase 1 จะ docker compose)
-# - Microsoft Copilot keys (ทำใน Phase 3 ถ้าต้องการ)
 ```
+
+แก้ `.env` ใส่ API keys (เรียงตาม priority):
+
+```yaml
+must_have:
+  - TAVILY_API_KEY    # สมัครฟรีที่ https://tavily.com (1,000/mo)
+
+recommended:
+  - EXA_API_KEY       # สมัครฟรีที่ https://dashboard.exa.ai (1,000/mo)
+                      # OR ข้ามแล้วใช้ MCP OAuth:
+                      # claude mcp add --transport http exa https://mcp.exa.ai/mcp
+
+phase_1_later:
+  - SEARXNG_URL       # default localhost:8888 — Docker compose ใน Phase 1
+
+phase_3_later:
+  - MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET   # Microsoft Copilot
+  - AZURE_OPENAI_KEY, AZURE_OPENAI_ENDPOINT       # Azure OpenAI fallback
+
+dropped:
+  - ❌ BRAVE_API_KEY  # Brave EOL'd free tier ก.พ. 2026 — ไม่ใช้แล้ว
+```
+
+**ไม่ต้องสมัคร** (ใช้ฟรี ไม่มี key):
+- DuckDuckGo Instant Answer (`duckduckgo-search` package)
+- Wikipedia REST (`wikipedia-api` package)
+- Jina Reader (`https://r.jina.ai/<url>`)
 
 ### Step 7 — Re-run health_check
 

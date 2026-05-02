@@ -761,18 +761,65 @@ chroma_collection.add(
 
 ## 6.4 🆕 Layer 3: Free-First Search Strategy
 
-### ลำดับความสำคัญ
+> **อัปเดต พ.ค. 2026:** Brave Search API ยกเลิก Free Tier ตั้งแต่ ก.พ. 2026 → ตัดออก
+> เปลี่ยนเป็น stack ที่มี **lane assignment ชัดๆ** ใช้ Exa.ai (structured + grounding) + Tavily (AI-clean) + DuckDuckGo + Wikipedia + Jina Reader
+
+### 6.4.0 Lane Assignment (ใครรับ query ไหน)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Query Type                       → Service             Free Tier  │
+├──────────────────────────────────────────────────────────────────┤
+│ ทั่วไป (workhorse 80%)           → SearXNG              ∞         │
+│ ต้องการ AI-clean สำหรับ LLM       → Tavily              1,000/mo  │
+│ ต้องการ structured + citations    → Exa.ai              1,000/mo  │
+│ Simple lookup (no key)            → DuckDuckGo IA       ∞         │
+│ Reference / definition            → Wikipedia REST      ∞         │
+│ ดึงเนื้อหา URL (Crawl4AI พัง)     → Jina Reader         free tier │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Routing decision
 
 ```python
-async def search_layer3(query: str, classification: str):
+async def search_layer3(query: str, intent: Intent, classification: str):
     """
-    เรียงตามต้นทุน — ฟรีก่อนเสมอ
+    Lane-based routing — ใช้ provider ที่เด่นในงานนั้น
+    เรียงตามต้นทุน + lane (specialized > generic)
     """
-    # ตรวจ classification ก่อน
+    # Egress guard ก่อนเสมอ
     if classification in ["CONFIDENTIAL", "RESTRICTED"]:
         raise EgressBlocked(f"Cannot search externally: {classification}")
 
-    # 1. SearXNG (self-hosted, FREE, UNLIMITED)
+    # Lane 1: definition / reference → Wikipedia (ฟรีไม่ต้อง key)
+    if intent.is_definition or intent.is_standard_reference:
+        try:
+            return await wikipedia_search(query)
+        except Exception:
+            pass  # fall through
+
+    # Lane 2: structured + grounding → Exa
+    if intent.needs_grounding or intent.has_output_schema:
+        if quota_available("exa"):
+            try:
+                return await exa.search(
+                    query,
+                    type="deep" if intent.is_research else "auto",
+                    output_schema=intent.output_schema,
+                    contents={"highlights": True},
+                )
+            except QuotaExceeded:
+                pass
+
+    # Lane 3: AI-optimized for LLM context (recent, current)
+    if intent.feed_to_llm and intent.is_recent:
+        if quota_available("tavily"):
+            try:
+                return await tavily.search(query, search_depth="advanced")
+            except QuotaExceeded:
+                pass
+
+    # Lane 4: workhorse — SearXNG (∞)
     try:
         results = await searxng.search(query, max_results=10)
         if quality_score(results) >= 0.7:
@@ -780,25 +827,17 @@ async def search_layer3(query: str, classification: str):
     except Exception as e:
         log.warning(f"SearXNG failed: {e}")
 
-    # 2. Brave Search API (2,000 FREE/month)
-    if quota_available("brave"):
-        try:
-            results = await brave.search(query, max_results=10)
-            if quality_score(results) >= 0.7:
-                return results
-        except QuotaExceeded:
-            pass
+    # Lane 5: simple lookup fallback (no key)
+    try:
+        return await duckduckgo_search(query)
+    except Exception:
+        pass
 
-    # 3. Tavily (1,000 FREE/month, AI-optimized)
-    if quota_available("tavily"):
-        try:
-            results = await tavily.search(query, search_depth="advanced")
-            return results
-        except QuotaExceeded:
-            pass
-
-    # 4. ถ้าทุกอันหมด/ไม่ได้ผล → flag insufficient
-    return InsufficientResults(query=query, tried=["searxng", "brave", "tavily"])
+    # Last resort: insufficient
+    return InsufficientResults(
+        query=query,
+        tried=["wikipedia", "exa", "tavily", "searxng", "duckduckgo"],
+    )
 ```
 
 ### 6.4.1 SearXNG Setup (Primary, FREE Unlimited)
@@ -887,35 +926,7 @@ search = SearxSearchWrapper(searx_host="http://localhost:8888")
 results = search.run("ราคา bearing SKF 6205 ล่าสุด")
 ```
 
-### 6.4.2 Brave Search API (Fallback #1, 2,000 FREE/mo)
-
-**ทำไม Brave:**
-- ✅ Free tier 2,000 query/เดือน (พอ)
-- ✅ Independent index (ไม่ใช่ Google/Bing rebrand)
-- ✅ Privacy-friendly, no tracking
-- ✅ Pricing: $3/1k queries (ถูกที่สุดในตลาด)
-
-**Setup:**
-1. สมัครที่ https://brave.com/search/api/
-2. รับ API key ใส่ใน `.env`:
-```bash
-BRAVE_API_KEY=BSAxxxxxxxxxxxxxxxxxx
-```
-
-```python
-import requests
-
-def brave_search(query, count=10):
-    headers = {"X-Subscription-Token": os.getenv("BRAVE_API_KEY")}
-    response = requests.get(
-        "https://api.search.brave.com/res/v1/web/search",
-        params={"q": query, "count": count, "country": "TH"},
-        headers=headers
-    )
-    return response.json()
-```
-
-### 6.4.3 Tavily API (Fallback #2, 1,000 FREE/mo)
+### 6.4.2 Tavily API (AI-optimized, 1,000 FREE/mo)
 
 **ทำไม Tavily:**
 - ✅ Free tier 1,000 credits/เดือน
@@ -942,19 +953,127 @@ result = client.search(
 )
 ```
 
-### 6.4.4 ทำไม **ไม่** ใช้ Perplexity
+### 6.4.3 Exa.ai (Structured + Grounding, 1,000 FREE/mo)
 
-| เหตุผล | รายละเอียด |
-|---|---|
-| **แพง** | Sonar Pro $5/1k requests + $3/1M input + $15/1M output |
-| **ช้า** | Independent benchmark Apr 2026: 11+ วินาที (Tavily 998ms) |
-| **Lock-in** | Vendor-specific format, ไม่ portable |
-| **โดน throttle** | Deep Research throttled by design |
-| **ราคาคำนวณยาก** | Tokens + per-request fee + search context size |
+**ทำไม Exa เด่น:**
+- ✅ Free tier 1,000 requests/เดือน
+- ✅ **`outputSchema` + grounding** — คืน JSON ตาม schema พร้อม **citation per field + confidence** → ตรงกับ AGENTS.md "ทุก claim มี pointer" + Auditor CoVe
+- ✅ MCP server ผ่าน OAuth (ไม่ต้อง API key สำหรับ Claude Code)
+- ✅ Search types หลากหลาย: instant (250ms), fast (450ms), auto (~1s), deep (4-15s), deep-reasoning (12-40s)
+- ✅ Neural/semantic search — เจอ concept ที่ keyword search หา
+- ✅ `/contents` endpoint — ดึง URL ที่รู้แล้ว (ทดแทน Crawl4AI บางกรณี)
+
+**Pricing (สำคัญ — ตรวจล่าสุดที่ exa.ai/pricing):**
+
+| Endpoint | Free | Paid |
+|---|---|---|
+| Search API | 1,000/mo | $7 / 1,000 (รวม contents 10 ผลแรก) |
+| Answer API | 1,000/mo | $5 / 1,000 |
+| Exa Deep | 1,000/mo | $12-15 / 1,000 (4-50s reasoning) |
+| Contents | 1,000/mo | $1 / 1,000 pages |
+
+**ใช้กรณีไหน:**
+```python
+# Case A: research ที่ต้องการ structured + cited
+results = exa.search(
+    "ASME Section VIII Div 1 MAWP formula 2026",
+    type="deep",
+    output_schema={
+        "type": "object",
+        "properties": {
+            "formula": {"type": "string"},
+            "applicable_temperature_range": {"type": "string"},
+            "safety_factor_min": {"type": "number"},
+        },
+        "required": ["formula"],
+    },
+    contents={"highlights": True},
+)
+# → results.output.content = {"formula": "P = (2*S*E*t)/(D-1.2*t)", ...}
+# → results.output.grounding = [{field, citations: [URL+title], confidence: "high"}]
+```
+
+**Setup (3 ทาง):**
+
+```bash
+# Option 1: pip + API key
+pip install exa-py
+echo "EXA_API_KEY=xxxx" >> .env
+```
+
+```bash
+# Option 2: MCP via OAuth (no API key — for Claude Code dev)
+claude mcp add --transport http exa https://mcp.exa.ai/mcp
+# จะเปิด browser ให้ login ครั้งแรก
+```
+
+```python
+# Option 3: ใช้ใน LangGraph orchestrator (production)
+from exa_py import Exa
+exa = Exa(api_key=os.getenv("EXA_API_KEY"))
+```
+
+**Lane: ใช้เมื่อต้องการ structured output + citations** (engineering reports, RCA findings, standards lookup) — ไม่ใช่สำหรับ general lookup
+
+### 6.4.4 No-Key Free Services (DuckDuckGo + Wikipedia + Jina)
+
+#### DuckDuckGo Instant Answer (no API key, ∞)
+
+```bash
+pip install duckduckgo-search
+```
+
+```python
+from duckduckgo_search import DDGS
+
+with DDGS() as ddgs:
+    results = list(ddgs.text("TPM total productive maintenance", max_results=5))
+```
+
+**Lane:** simple lookup ที่ไม่ต้อง grounding — fallback ตอน SearXNG พัง
+
+#### Wikipedia REST API (no API key, ∞)
+
+```bash
+pip install wikipedia-api
+```
+
+```python
+import wikipediaapi
+
+wiki = wikipediaapi.Wikipedia(user_agent="tpm-ai/1.0", language="en")
+page = wiki.page("ASTM A106")
+print(page.summary)
+```
+
+**Lane:** definition / standard reference ("ASTM A106 คืออะไร", "Wat is ISO 14224")
+
+#### Jina Reader (free tier, page fetch)
+
+```python
+import httpx
+
+# ดึงเนื้อหา URL clean — ทดแทน Crawl4AI ตอน JS-heavy
+async def jina_fetch(url: str) -> str:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"https://r.jina.ai/{url}")
+        return r.text  # markdown ที่ clean แล้ว
+```
+
+**Lane:** backup web fetch ตอน Crawl4AI/Trafilatura พัง
+
+### 6.4.5 ทำไม **ไม่** ใช้ Perplexity / Brave
+
+| Service | สถานะ | เหตุผล |
+|---|---|---|
+| **Perplexity Sonar Pro** | ❌ ไม่ใช้ | $5/1k req + $3/1M input + $15/1M output, latency 11s+ vs Tavily 998ms, vendor lock-in |
+| **Brave Search API** | ❌ EOL | ก.พ. 2026 ยกเลิก Free Tier — ต้องจ่ายแล้วเท่านั้น |
+| **Bing Web Search API** | ❌ EOL | Microsoft retired ส.ค. 2025 |
+| **Kagi Search** | ❌ paid only | คุณภาพดีสุดแต่ไม่มี free |
 
 **สรุป:** ฟรี first → จ่ายต่อเมื่อจำเป็นจริงๆ
 
-### 6.4.5 Web Fetch (อ่านเนื้อหาเต็ม)
+### 6.4.6 Web Fetch (อ่านเนื้อหาเต็ม)
 
 หลัง search ได้ URL → ต้องการอ่านเนื้อหาเต็ม
 
