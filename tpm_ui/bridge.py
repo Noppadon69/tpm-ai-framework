@@ -4,6 +4,12 @@ tpm_ui.bridge - sync-async UI bridge for Chainlit
 The orchestrator is synchronous (LangGraph), but Chainlit handlers are async.
 This bridge runs the orchestrator in a worker thread and pipes UI calls
 (ask, info) back to the Chainlit event loop via run_coroutine_threadsafe.
+
+Question/answer routing:
+    Each ui.ask() creates an asyncio.Queue stored in cl.user_session.
+    Both the @cl.action_callback (button clicks) AND on_message (free-form
+    text) route their input to that queue while 'awaiting_answer' is True.
+    This way users can EITHER click buttons OR type — both work.
 """
 from __future__ import annotations
 
@@ -17,6 +23,9 @@ import chainlit as cl
 from tpm_core.orchestrator import UI
 
 log = logging.getLogger(__name__)
+
+# Action name used for clarification choice buttons (must match @cl.action_callback)
+CLARIFY_ACTION_NAME = "tpm_clarify_choice"
 
 
 class ChainlitUI(UI):
@@ -67,32 +76,56 @@ class ChainlitUI(UI):
     # ============================================================
     async def _async_ask(self, question: str, options: list[str]) -> str:
         """
-        Render question with options as TEXT (not action buttons), so user can
-        either type the option label/letter OR write a free-form description.
-
-        Why not AskActionMessage? It blocks the chat input box, so users who
-        want to type instead of clicking get stuck. AskUserMessage always
-        accepts free-form input.
+        Send a regular cl.Message with action buttons attached.
+        User can EITHER click an action OR type free-form text.
+        Both paths feed into the same per-session asyncio.Queue.
         """
         clean_options = [o.strip() for o in options if o.strip()]
+
+        # Per-session queue + awaiting flag (read by app.on_message + action_callback)
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        cl.user_session.set("ask_queue", queue)
+        cl.user_session.set("ask_options", clean_options)
+        cl.user_session.set("awaiting_answer", True)
+
+        # Render
         body_lines = [f"❓ **{question}**"]
         if clean_options:
             body_lines.append("")
-            for opt in clean_options:
-                body_lines.append(f"  • {opt}")
-            body_lines.append("")
-            body_lines.append(
-                "💬 _พิมพ์ตัวเลือก (เช่น A) หรือพิมพ์อธิบายเพิ่มเติมก็ได้_"
+            body_lines.append("_เลือกปุ่มข้างล่าง หรือพิมพ์อธิบายเองก็ได้_")
+
+        # Build action buttons (Chainlit shows them under the message)
+        actions: list[cl.Action] = []
+        for i, opt in enumerate(clean_options):
+            label = opt[:60]
+            actions.append(
+                cl.Action(
+                    name=CLARIFY_ACTION_NAME,
+                    value=opt,
+                    label=label,
+                    payload={"value": opt, "index": i},
+                )
             )
 
-        msg = await cl.AskUserMessage(
+        msg = cl.Message(
             content="\n".join(body_lines),
-            timeout=self._ask_timeout_s,
-        ).send()
-        if msg and isinstance(msg, dict):
-            answer = str(msg.get("output", "")).strip()
-            return _expand_letter_choice(answer, clean_options)
-        return ""
+            actions=actions or None,
+            author="TPM AI",
+        )
+        await msg.send()
+
+        # Wait for either a button click or a typed message
+        try:
+            answer = await asyncio.wait_for(queue.get(), timeout=self._ask_timeout_s)
+        except asyncio.TimeoutError:
+            log.warning("ChainlitUI.ask timed out after %.0fs", self._ask_timeout_s)
+            answer = ""
+        finally:
+            cl.user_session.set("awaiting_answer", False)
+            cl.user_session.set("ask_queue", None)
+            cl.user_session.set("ask_options", None)
+
+        return _expand_letter_choice(answer, clean_options)
 
     async def _async_info(self, msg: str) -> None:
         await cl.Message(content=msg, author="TPM AI").send()

@@ -206,6 +206,20 @@ def _check_max_iter(state: TPMState) -> TPMState:
     return state
 
 
+SYNTHESIZER_SYSTEM = """\
+You are a TPM (Total Productive Maintenance) engineering assistant.
+Given a user question and search result snippets, write a concise, accurate answer.
+
+Rules:
+  - Cite sources inline as [1], [2], [3] matching the snippet numbers.
+  - If the snippets do not contain enough info to answer, say so honestly.
+  - Do NOT invent numbers, dates, or facts that aren't in the snippets.
+  - Keep the answer under 6 sentences unless the user asked for detail.
+  - Match the user's preferred language (see "Reply language" field below).
+  - End with a "**Sources:**" list of the cited URLs.
+"""
+
+
 def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
     """
     Phase 2/3: route intent to either L3 search (lookup) or Worker (report/excel/calc).
@@ -280,25 +294,86 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
             f"(latency={results.latency_ms}ms, "
             f"quota={results.quota_remaining})"
         )
-        for r in results.results[:3]:
-            ui.info(f"  - {r.title[:80]}")
-            if r.snippet:
-                ui.info(f"      {r.snippet[:120]}")
+
+        # Synthesize an actual answer from the snippets (not just a title list).
+        synthesis = ""
+        if results.is_useful() and results.results:
+            try:
+                synthesis = _synthesize_lookup_answer(
+                    user_request=state.user_request,
+                    intent=intent,
+                    results=results,
+                    model=model,
+                )
+                ui.info("\n💡 **คำตอบ:**\n\n" + synthesis)
+            except Exception as e:  # noqa: BLE001
+                log.warning("synthesis failed: %s", e)
+                # Fall back to title list
+                for r in results.results[:3]:
+                    ui.info(f"  - {r.title[:80]}")
+                    if r.snippet:
+                        ui.info(f"      {r.snippet[:120]}")
 
         state.phase = OrchestratorPhase.DONE
         state.final_output = {
             "intent": intent.model_dump(),
             "search": state.recon_results,
+            "answer": synthesis,
         }
         state.append_handoff(HandoffPacket(
             stage="plan",
             success=True,
-            reasoning=f"L3 search via {results.provider.value}",
-            payload={"n_results": len(results.results)},
+            reasoning=f"L3 search via {results.provider.value} + synthesis",
+            payload={"n_results": len(results.results), "answer_chars": len(synthesis)},
         ))
         return state
 
     return node_plan
+
+
+def _synthesize_lookup_answer(
+    user_request: str,
+    intent: Intent,
+    results,
+    model: str,
+) -> str:
+    """
+    Use the LLM to read the top search snippets and write an answer in the
+    user's preferred language. Cites sources inline.
+    """
+    from tpm_core.llm import chat
+
+    snippets = []
+    for i, r in enumerate(results.results[:5], 1):
+        chunk = (r.snippet or r.title or "").strip()
+        snippets.append(f"[{i}] {r.title}\n  URL: {r.url}\n  Content: {chunk[:400]}")
+
+    # Detect target language from intent.constraints, else from prompt heuristic
+    lang = (intent.constraints or {}).get("language", "")
+    if not lang:
+        # Heuristic: if user prompt has Thai chars, reply Thai; else English
+        if any("฀" <= c <= "๿" for c in user_request):
+            lang = "th"
+        else:
+            lang = "en"
+    lang_label = {"th": "Thai (ภาษาไทย)", "en": "English"}.get(lang, lang)
+
+    user_msg = (
+        f"User question: {user_request}\n\n"
+        f"Reply language: {lang_label}\n\n"
+        f"Search snippets:\n" + "\n\n".join(snippets) +
+        "\n\nWrite the answer now. Remember to cite [1] [2] [3] inline."
+    )
+
+    return chat(
+        model,
+        [
+            {"role": "system", "content": SYNTHESIZER_SYSTEM},
+            {"role": "user", "content": user_msg},
+        ],
+        temperature=0.2,
+        timeout=180.0,
+    )
 
 
 # ============================================================
