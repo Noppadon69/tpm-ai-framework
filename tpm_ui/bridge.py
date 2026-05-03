@@ -66,50 +66,52 @@ class ChainlitUI(UI):
     # Async helpers (run on Chainlit event loop)
     # ============================================================
     async def _async_ask(self, question: str, options: list[str]) -> str:
-        """Render an interactive ask via cl.AskActionMessage when possible."""
-        # Build action buttons from the option list (skip the free-form 'อื่นๆ')
-        actions: list[cl.Action] = []
-        for opt in options:
-            stripped = opt.strip()
-            if not stripped:
-                continue
-            # Free-form escape - render as a hint, not a button
-            if any(token in stripped.lower() for token in ("อื่นๆ", "พิมพ์", "type", "describe")):
-                continue
-            label = stripped[:60]
-            actions.append(
-                cl.Action(
-                    name="opt",
-                    value=stripped,
-                    label=label,
-                    payload={"value": stripped},
-                )
+        """
+        Render question with options as TEXT (not action buttons), so user can
+        either type the option label/letter OR write a free-form description.
+
+        Why not AskActionMessage? It blocks the chat input box, so users who
+        want to type instead of clicking get stuck. AskUserMessage always
+        accepts free-form input.
+        """
+        clean_options = [o.strip() for o in options if o.strip()]
+        body_lines = [f"❓ **{question}**"]
+        if clean_options:
+            body_lines.append("")
+            for opt in clean_options:
+                body_lines.append(f"  • {opt}")
+            body_lines.append("")
+            body_lines.append(
+                "💬 _พิมพ์ตัวเลือก (เช่น A) หรือพิมพ์อธิบายเพิ่มเติมก็ได้_"
             )
 
-        if actions:
-            res = await cl.AskActionMessage(
-                content=f"❓ **{question}**\n\nเลือกตัวเลือก หรือพิมพ์อธิบายเพิ่มในข้อความถัดไป:",
-                actions=actions,
-                timeout=self._ask_timeout_s,
-            ).send()
-            if res and isinstance(res, dict):
-                payload = res.get("payload", {})
-                value = payload.get("value") or res.get("value") or ""
-                if value:
-                    return str(value)
-                return ""
-            # No action chosen - fall through to free-form prompt
-        # Pure free-form question
         msg = await cl.AskUserMessage(
-            content=f"❓ **{question}**\n\n" + "\n".join(options),
+            content="\n".join(body_lines),
             timeout=self._ask_timeout_s,
         ).send()
         if msg and isinstance(msg, dict):
-            return str(msg.get("output", ""))
+            answer = str(msg.get("output", "")).strip()
+            return _expand_letter_choice(answer, clean_options)
         return ""
 
     async def _async_info(self, msg: str) -> None:
         await cl.Message(content=msg, author="TPM AI").send()
+
+
+def _expand_letter_choice(answer: str, options: list[str]) -> str:
+    """
+    If user typed just 'A'/'B'/'C', expand to the full option text.
+    Otherwise return as-is (free-form).
+    """
+    if not answer or len(answer) > 4:
+        return answer
+    upper = answer.upper().rstrip(")").rstrip(".").strip()
+    if upper not in {"A", "B", "C", "D", "E"}:
+        return answer
+    idx = "ABCDE".index(upper)
+    if idx < len(options):
+        return options[idx]
+    return answer
 
 
 # ============================================================

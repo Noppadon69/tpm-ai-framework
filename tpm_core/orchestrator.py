@@ -118,7 +118,7 @@ def make_clarify_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
                 "Confirm to proceed? (yes/แก้ไข)",
                 options=["yes - go ahead", "แก้ไข - revise"],
             )
-            if ans.strip().lower() in ("yes", "y", "ใช่", "go", ""):
+            if _is_yes(ans):
                 state.intent = intent
                 state.phase = OrchestratorPhase.PLAN
                 state.append_handoff(HandoffPacket(
@@ -129,8 +129,17 @@ def make_clarify_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
                     payload={"intent": intent.model_dump()},
                 ))
                 return state
-            # User wants to revise -> add to history + loop
-            state.clarify_history.append(ans)
+            # User wants to revise -> get the ACTUAL revision content,
+            # not the button label "แก้ไข - revise"
+            revision = ans.strip()
+            if _is_revise_label(revision):
+                revision = ui.ask(
+                    "ช่วยอธิบายเพิ่มเติม — คุณอยากให้ปรับอะไร? "
+                    "(เช่น เปลี่ยน subject, เพิ่มเงื่อนไขเวลา, ภาษาตอบกลับ ฯลฯ)",
+                    options=[],
+                ).strip()
+            if revision:
+                state.clarify_history.append(revision)
             state.clarify_iterations += 1
             return _check_max_iter(state)
 
@@ -153,6 +162,31 @@ def make_clarify_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
         return _check_max_iter(state)
 
     return node_clarify
+
+
+# ============================================================
+# Answer interpretation helpers
+# ============================================================
+_YES_TOKENS = {"yes", "y", "ใช่", "go", "ตกลง", "ok", "ยืนยัน", "ครับ", "ค่ะ", ""}
+_REVISE_LABELS = {
+    "แก้ไข - revise",
+    "แก้ไข",
+    "revise",
+    "no",
+    "ไม่ใช่",
+    "ไม่",
+    "ไม่ตรง",
+}
+
+
+def _is_yes(answer: str) -> bool:
+    """User clicked 'yes' or typed a confirmation token."""
+    return answer.strip().lower() in _YES_TOKENS
+
+
+def _is_revise_label(answer: str) -> bool:
+    """User clicked 'แก้ไข' button - the literal label, not real content."""
+    return answer.strip().lower() in {s.lower() for s in _REVISE_LABELS}
 
 
 def _check_max_iter(state: TPMState) -> TPMState:
