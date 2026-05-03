@@ -36,16 +36,22 @@ if errorlevel 1 (
     echo [skip] power_monitor already running
 )
 
-REM ---- 4. ensure Ollama is up ----
+REM ---- 4. ensure Ollama is up (with VRAM-saver env vars) ----
+REM Flash Attention + KV cache q8_0 = ~1 GB saved on Qwen3-8B + ~30%% faster prefill
+REM Reference: Hermes-A3B + 128K ctx trick on 12 GB cards
+set "OLLAMA_FLASH_ATTENTION=1"
+set "OLLAMA_KV_CACHE_TYPE=q8_0"
+
 where ollama >nul 2>&1
 if not errorlevel 1 (
     tasklist /fi "imagename eq ollama.exe" 2>nul | findstr /i "ollama" >nul
     if errorlevel 1 (
+        echo [ok] starting ollama serve with FLASH_ATTENTION=1 + KV_CACHE_TYPE=q8_0
         start "ollama" /b ollama serve
-        echo [ok] ollama serve started
         timeout /t 2 /nobreak >nul
     ) else (
-        echo [skip] ollama already serving
+        echo [warn] ollama already running ^- env vars may NOT apply to existing process
+        echo        run stop.bat then start.bat to apply VRAM optimizations
     )
 )
 

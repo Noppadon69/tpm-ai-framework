@@ -216,6 +216,43 @@ storage: ใช้ที่มี (ระบบประมาณ ≥100 GB)
 
 ## 3.3 Strategy ใหม่ (ไม่ต้องซื้อฮาร์ดแวร์)
 
+### 🆕 Ollama VRAM-saver tricks (พ.ค. 2026 update)
+
+จากบทความ debug 35B-A3B บน 12GB VRAM — เอา 2 trick มาใช้ได้ทันที:
+
+```bash
+# ตั้งก่อน `ollama serve` (อยู่ใน start.sh / start.bat แล้ว)
+export OLLAMA_FLASH_ATTENTION=1     # เร็วขึ้น 17% prefill + memory ลดลง
+export OLLAMA_KV_CACHE_TYPE=q8_0    # KV cache 16-bit -> 8-bit, ประหยัด ~1 GB
+```
+
+**ผลที่วัดได้ (RTX 5060 8GB + Qwen3-8B Q4_K_M, May 2026):**
+
+| Metric | Default | + 2 tricks | Win |
+|---|---|---|---|
+| Decode tok/s (median) | 58.4 | 58.2 | ~same (ตามคาด — short outputs) |
+| Prefill tok/s (median) | 1204 | 1406 | **+17%** |
+| VRAM total used | ~6.5 GB | ~5.3 GB | **-1.2 GB headroom** |
+| Free VRAM | ~1.5 GB | ~2.3 GB | พอ Vision swap แล้ว |
+
+**MoE A3B trick (ยังไม่ใช้):**
+- Hermes-4-35B-A3B = active 3B / total 35B
+- ลด compute ไม่ลด VRAM → ยังต้อง 21+ GB load weights
+- 8GB ของเรายัง OOM แม้เปิด KV q8_0
+- → defer ไป Phase 5 ตอน run บน RAM (32GB) ผ่าน llama.cpp split
+
+### Custom Modelfile (Phase 4+ optimization)
+
+```dockerfile
+# models/orchestrator/Modelfile
+FROM qwen3:8b
+PARAMETER num_ctx 16384       # 4x default (q8_0 KV cache ทำให้ใส่ได้)
+PARAMETER keep_alive 30m      # กัน cold-start ระหว่าง session
+PARAMETER temperature 0.2     # low variance สำหรับ json_mode
+```
+
+Setup: `python scripts/setup_models.py` → สร้าง `tpm-orch:latest`
+
 ### กฎ VRAM Budget (≤ 7 GB ตลอดเวลา, เหลือ headroom 1 GB)
 
 | State | สิ่งที่อยู่ใน VRAM | VRAM ใช้ | VRAM เหลือ |

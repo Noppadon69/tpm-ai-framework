@@ -41,15 +41,21 @@ else
     echo "[ok] power_monitor started (pid=$!)"
 fi
 
-# ---- 4. ensure Ollama is up ---------------------------------
+# ---- 4. ensure Ollama is up (with VRAM-saver env vars) ------
+# Flash Attention + KV cache q8_0 = ~1 GB saved on Qwen3-8B + ~30% faster prefill
+# Reference: Hermes-A3B + 128K ctx trick on 12 GB cards
+export OLLAMA_FLASH_ATTENTION=1
+export OLLAMA_KV_CACHE_TYPE=q8_0
+
 if command -v ollama &> /dev/null; then
     if ! pgrep -f "ollama serve" > /dev/null 2>&1 \
         && ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
         nohup ollama serve > "logs/ollama.out" 2>&1 &
-        echo "[ok] ollama serve started"
+        echo "[ok] ollama serve started (FLASH_ATTENTION=1 + KV_CACHE_TYPE=q8_0)"
         sleep 2
     else
-        echo "[skip] ollama already serving"
+        echo "[warn] ollama already running - env vars may NOT apply to existing process"
+        echo "       run bash stop.sh then bash start.sh to apply VRAM optimizations"
     fi
 fi
 

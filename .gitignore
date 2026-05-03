@@ -6,7 +6,14 @@
 # ------------------------------------------------------------
 # Models (re-downloadable from HuggingFace / Ollama)
 # ------------------------------------------------------------
-models/
+# Model weights (huge, re-downloadable from Ollama/HuggingFace).
+# We allow Modelfile config files through.
+models/**/*.gguf
+models/**/*.bin
+models/**/*.safetensors
+models/**/*.onnx
+models/**/blobs/
+models/**/manifests/
 *.gguf
 *.bin
 *.safetensors

@@ -1,0 +1,26 @@
+# Modelfile: tpm-orch
+# Custom Qwen3-8B variant for the TPM AI orchestrator
+# ref: MASTER_PLAN_v5.md § 3.3 + KV-cache q8_0 trick
+#
+# Usage:
+#   ollama create tpm-orch -f models/orchestrator/Modelfile
+#   ollama run tpm-orch
+#
+# Set TPM_ORCHESTRATOR_MODEL=tpm-orch:latest in .env to make it the default.
+
+FROM qwen3:8b
+
+# 16K context (4x default 4K).
+# With OLLAMA_KV_CACHE_TYPE=q8_0 the KV cache halves -> 16K ctx fits in ~5.5 GB
+# total (orchestrator) on the RTX 5060 8 GB. Bumping to 32K is possible but
+# leaves ~0.5 GB headroom which is too tight for the scavenger 1.7B + Vision swap.
+PARAMETER num_ctx 16384
+
+# Keep alive for 30 min so cold-start doesn't bite during a session.
+PARAMETER keep_alive 30m
+
+# Conservative temperature - we use json_mode often, want low variance.
+PARAMETER temperature 0.2
+
+# Repetition penalty for long synthesizer answers.
+PARAMETER repeat_penalty 1.1

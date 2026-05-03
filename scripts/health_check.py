@@ -130,6 +130,26 @@ def check_ollama() -> dict:
     return _r("ollama", Check.OK, f"models present: {found}")
 
 
+def check_ollama_env() -> dict:
+    """
+    Verify VRAM-saver env vars are set in this shell.
+    These must be exported BEFORE `ollama serve` starts to take effect.
+    Server doesn't expose them via API, so we can only check the launcher's env.
+    """
+    import os
+    fa = os.environ.get("OLLAMA_FLASH_ATTENTION", "")
+    kv = os.environ.get("OLLAMA_KV_CACHE_TYPE", "")
+    if fa == "1" and kv in ("q8_0", "q4_0"):
+        return _r("ollama_env", Check.OK,
+                  f"FLASH_ATTENTION={fa} KV_CACHE_TYPE={kv}")
+    if not fa and not kv:
+        return _r("ollama_env", Check.WARN,
+                  "VRAM optimizations off - run start.sh/.bat to enable")
+    return _r("ollama_env", Check.WARN,
+              f"partial: FLASH_ATTENTION={fa or '(off)'} "
+              f"KV_CACHE_TYPE={kv or '(default f16)'}")
+
+
 def check_docker() -> dict:
     if shutil.which("docker") is None:
         return _r("docker", Check.WARN, "docker not in PATH - needed for Phase 1 SearXNG")
@@ -219,6 +239,7 @@ ALL_CHECKS = [
     check_folders,
     check_config_files,
     check_ollama,
+    check_ollama_env,
     check_docker,
     check_thermal,
     check_audit_chain,

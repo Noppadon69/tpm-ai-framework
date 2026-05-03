@@ -1,0 +1,14 @@
+# Modelfile: tpm-scavenger
+# Custom Qwen3-1.7B variant for retrieval / cleanup tasks
+# ref: MASTER_PLAN_v5.md § 4.2 (Scavenger role)
+
+FROM qwen3:1.7b
+
+# 32K is trivial on a 1.7B model with q8_0 KV cache (~150 MB extra).
+PARAMETER num_ctx 32768
+
+# Smaller model, longer keep_alive (cheap to hold).
+PARAMETER keep_alive 60m
+
+# Even lower temperature - retrieval should be deterministic.
+PARAMETER temperature 0.0
