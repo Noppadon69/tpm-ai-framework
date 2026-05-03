@@ -10,14 +10,16 @@
 
 FROM qwen3:8b
 
-# 16K context (4x default 4K).
-# With OLLAMA_KV_CACHE_TYPE=q8_0 the KV cache halves -> 16K ctx fits in ~5.5 GB
-# total (orchestrator) on the RTX 5060 8 GB. Bumping to 32K is possible but
-# leaves ~0.5 GB headroom which is too tight for the scavenger 1.7B + Vision swap.
-PARAMETER num_ctx 16384
+# 8K context (2x default 4K).
+# Empirically measured (May 2026, RTX 5060 8GB):
+#   num_ctx 16384 -> 7.2 GB VRAM (only 0.6 GB headroom - too tight for swap)
+#   num_ctx 8192  -> ~5.8 GB VRAM (~2 GB headroom - fits scavenger 1.7B swap)
+# Synthesizer with 5 snippets x 400 chars + 1500-char answer ~ 3.5K tokens
+# total - well within 8K. Bump to 16K only if Vision Worker disabled.
+PARAMETER num_ctx 8192
 
-# Keep alive for 30 min so cold-start doesn't bite during a session.
-PARAMETER keep_alive 30m
+# Note: keep_alive is a request-level option (per /api/chat call), not a
+# Modelfile parameter. Set OLLAMA_KEEP_ALIVE=30m as an env var if needed.
 
 # Conservative temperature - we use json_mode often, want low variance.
 PARAMETER temperature 0.2

@@ -4,11 +4,12 @@
 
 FROM qwen3:1.7b
 
-# 32K is trivial on a 1.7B model with q8_0 KV cache (~150 MB extra).
-PARAMETER num_ctx 32768
+# 16K is plenty for retrieval/cleanup tasks; 32K was excessive.
+# Scavenger 1.7B at 16K ~ 1.4 GB VRAM (cheap to keep loaded with orchestrator).
+PARAMETER num_ctx 16384
 
-# Smaller model, longer keep_alive (cheap to hold).
-PARAMETER keep_alive 60m
+# Note: keep_alive is request-level, not a Modelfile parameter. Set
+# OLLAMA_KEEP_ALIVE=60m as env var if needed.
 
 # Even lower temperature - retrieval should be deterministic.
 PARAMETER temperature 0.0

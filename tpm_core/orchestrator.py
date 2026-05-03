@@ -340,13 +340,25 @@ def _synthesize_lookup_answer(
     """
     Use the LLM to read the top search snippets and write an answer in the
     user's preferred language. Cites sources inline.
+
+    Snippet budget tuned for 8K context (tpm-orch:latest):
+      8 snippets x 800 chars = ~6400 chars (~1600 tokens)
+      + system prompt + user q + answer (~1500 tokens)
+      = ~3-4K tokens, well within 8K ctx, leaves room for chat history.
     """
     from tpm_core.llm import chat
 
+    # Decide budget based on whether we're on tpm-orch (8K) or default (4K)
+    is_custom_model = model.startswith("tpm-")
+    n_snippets = 8 if is_custom_model else 5
+    chunk_chars = 800 if is_custom_model else 400
+
     snippets = []
-    for i, r in enumerate(results.results[:5], 1):
+    for i, r in enumerate(results.results[:n_snippets], 1):
         chunk = (r.snippet or r.title or "").strip()
-        snippets.append(f"[{i}] {r.title}\n  URL: {r.url}\n  Content: {chunk[:400]}")
+        snippets.append(
+            f"[{i}] {r.title}\n  URL: {r.url}\n  Content: {chunk[:chunk_chars]}"
+        )
 
     # Detect target language from intent.constraints, else from prompt heuristic
     lang = (intent.constraints or {}).get("language", "")
