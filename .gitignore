@@ -151,3 +151,11 @@ services/arize_phoenix/.env
 # ------------------------------------------------------------
 .ipynb_checkpoints/
 *.ipynb
+logs/chainlit*.out
+
+# ------------------------------------------------------------
+# Chainlit auto-generated (regenerated on each `chainlit run`)
+# ------------------------------------------------------------
+.chainlit/translations/
+.chainlit/.langgraph_*
+.files/

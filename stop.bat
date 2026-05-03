@@ -7,8 +7,13 @@ echo ============================================================
 echo TPM AI - shutdown
 echo ============================================================
 
-REM ---- 1. stop chainlit (Phase 4+) ----
-taskkill /f /im chainlit.exe 2>nul && echo [ok] chainlit stopped || echo [skip] chainlit not running
+REM ---- 1. stop Chainlit (Phase 4 Day 1) ----
+taskkill /f /im chainlit.exe >nul 2>&1
+if errorlevel 1 (
+    echo [skip] chainlit not running
+) else (
+    echo [ok] chainlit stopped
+)
 
 REM ---- 2. stop daemons (best-effort: kill pythonw with thermal/power) ----
 for /f "tokens=2" %%p in ('tasklist /fi "imagename eq pythonw.exe" /v 2^>nul ^| findstr /i "thermal_guard"') do (

@@ -57,8 +57,22 @@ if exist services\docker-compose.yml (
     )
 )
 
+REM ---- 6. start Chainlit UI (Phase 4 Day 1) ----
+if exist app.py (
+    if exist .venv\Scripts\chainlit.exe (
+        REM Kill any prior chainlit process before launching
+        taskkill /F /IM chainlit.exe >nul 2>&1
+        echo [ok] launching Chainlit UI on http://localhost:8000
+        start "TPM AI Chainlit" /b .venv\Scripts\chainlit.exe run app.py --host 0.0.0.0 --port 8000 --headless
+    ) else (
+        echo [skip] chainlit.exe not in .venv\Scripts ^(pip install -r requirements.txt^)
+    )
+)
+
 echo ============================================================
 echo TPM AI ready.
-echo Stop with:  stop.bat
+echo  - Web UI:  http://localhost:8000
+echo  - CLI:     .venv\Scripts\python.exe scripts\cli_demo.py
+echo  - Stop:    stop.bat
 echo ============================================================
 endlocal

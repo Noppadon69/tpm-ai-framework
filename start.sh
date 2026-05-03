@@ -70,14 +70,28 @@ if command -v ollama &> /dev/null; then
     done
 fi
 
-# ---- 7. UI placeholder (Phase 4) ----------------------------
+# ---- 7. Chainlit UI (Phase 4 Day 1) -------------------------
 if [[ -f app.py ]]; then
-    echo "[Phase 4+] launching Chainlit on :8000"
-    nohup chainlit run app.py --host 0.0.0.0 --port 8000 \
-        > "logs/chainlit.out" 2>&1 &
+    if pgrep -f "chainlit run" > /dev/null 2>&1; then
+        echo "[skip] chainlit already running"
+    else
+        if [[ -x .venv/Scripts/chainlit ]]; then
+            CHAINLIT=".venv/Scripts/chainlit"
+        elif [[ -x .venv/bin/chainlit ]]; then
+            CHAINLIT=".venv/bin/chainlit"
+        else
+            CHAINLIT="chainlit"
+        fi
+        nohup "$CHAINLIT" run app.py --host 0.0.0.0 --port 8000 --headless \
+            > "logs/chainlit.out" 2>&1 &
+        echo "[ok] chainlit started (pid=$!) on http://localhost:8000"
+    fi
 fi
 
 echo "============================================================"
-echo "TPM AI ready. Tail logs with: tail -f logs/*.out"
-echo "Stop with:                    bash stop.sh"
+echo "TPM AI ready."
+echo "  - Web UI: http://localhost:8000"
+echo "  - CLI:    .venv/Scripts/python.exe scripts/cli_demo.py"
+echo "  - Logs:   tail -f logs/*.out"
+echo "  - Stop:   bash stop.sh"
 echo "============================================================"
