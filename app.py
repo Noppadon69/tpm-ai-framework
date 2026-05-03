@@ -120,9 +120,17 @@ async def on_message(message: cl.Message):
         root_step.input = user_text
 
         try:
+            started_at = initial_state.started_at
             final = await asyncio.to_thread(graph.invoke, initial_state)
             if isinstance(final, dict):
                 final = TPMState(**final)
+            # Persist for Night Cycle replay
+            if final.is_terminal():
+                try:
+                    from tpm_night import save_session
+                    save_session(final, started_at=started_at)
+                except Exception as e:  # noqa: BLE001
+                    logging.warning("session persistence failed: %s", e)
         except Exception as e:  # noqa: BLE001
             await cl.Message(
                 content=f"❌ Orchestrator error: `{type(e).__name__}: {e}`",

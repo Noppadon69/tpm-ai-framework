@@ -393,11 +393,22 @@ def run_orchestrator(
     user_request: str,
     ui: UI | None = None,
     model: str = DEFAULT_MODEL,
+    persist: bool = True,
 ) -> TPMState:
     graph = build_graph(ui=ui, model=model)
     initial = TPMState(user_request=user_request, model_name=model)
+    started_at = initial.started_at
     final = graph.invoke(initial)
     # LangGraph returns dict-like - convert back
     if isinstance(final, dict):
-        return TPMState(**final)
+        final = TPMState(**final)
+
+    # Auto-persist on terminal state (used by Night Cycle replay)
+    if persist and final.is_terminal():
+        try:
+            from tpm_night.session_store import save_session
+            save_session(final, started_at=started_at)
+        except Exception as e:  # noqa: BLE001
+            log.warning("session persistence failed: %s", e)
+
     return final
