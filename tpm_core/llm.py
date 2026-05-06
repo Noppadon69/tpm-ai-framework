@@ -32,14 +32,18 @@ def _http_chat(
     messages: list[dict[str, str]],
     *,
     temperature: float = 0.2,
+    seed: int | None = None,
     format: str | dict | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> dict[str, Any]:
+    options: dict[str, Any] = {"temperature": temperature}
+    if seed is not None:
+        options["seed"] = seed
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "stream": False,
-        "options": {"temperature": temperature},
+        "options": options,
     }
     if format is not None:
         payload["format"] = format
@@ -58,6 +62,7 @@ def chat(
     messages: list[dict[str, str]],
     *,
     temperature: float = 0.2,
+    seed: int | None = None,
     json_mode: bool = False,
     json_schema: dict | None = None,
     retries: int = DEFAULT_RETRIES,
@@ -68,6 +73,7 @@ def chat(
 
     json_mode=True forces Ollama to emit valid JSON (uses 'format' field).
     json_schema = use Ollama 0.5+ structured output (preferred when supported).
+    seed: pin RNG for reproducibility (use with temperature=0 for full determinism).
     """
     fmt: str | dict | None = None
     if json_schema is not None:
@@ -80,7 +86,7 @@ def chat(
         try:
             t0 = time.perf_counter()
             resp = _http_chat(
-                model, messages, temperature=temperature, format=fmt, timeout=timeout
+                model, messages, temperature=temperature, seed=seed, format=fmt, timeout=timeout
             )
             dt = int((time.perf_counter() - t0) * 1000)
             content = resp.get("message", {}).get("content", "")
@@ -98,6 +104,7 @@ def chat_json(
     messages: list[dict[str, str]],
     *,
     temperature: float = 0.1,
+    seed: int | None = None,
     json_schema: dict | None = None,
     retries: int = DEFAULT_RETRIES,
     timeout: float = DEFAULT_TIMEOUT,
@@ -105,6 +112,7 @@ def chat_json(
     """
     Convenience wrapper: sends with JSON mode + parses response.
     Raises ValueError on parse failure after all retries.
+    seed: pin RNG (use with temperature=0 for full determinism on classification tasks).
     """
     last_text = ""
     for attempt in range(retries + 1):
@@ -112,6 +120,7 @@ def chat_json(
             model,
             messages,
             temperature=temperature,
+            seed=seed,
             json_mode=json_schema is None,
             json_schema=json_schema,
             retries=0,

@@ -26,7 +26,7 @@ You are the intent parser for a Thai/English bilingual TPM (Total Productive Mai
 AI assistant. Extract structured intent from a user's request.
 
 Output fields:
-  - action: one of [lookup, analyze, report, calc, plan, edit, vision, other]
+  - action: one of [lookup, analyze, report, excel, calc, plan, edit, vision, other]
   - subject: the equipment/document/standard being asked about (NOT the
              word "prompt" or "message" - those are meta-talk, not the subject)
   - scope: WHAT the user wants done with the subject (definition, comparison,
@@ -35,6 +35,33 @@ Output fields:
   - confidence: 0.0-1.0 - prefer 0.5-0.7 if request is vague
   - missing: list of slot names still empty
   - alternatives: up to 3 other interpretations if ambiguous
+
+Action definitions (pick the BEST match - do not confuse them):
+  - lookup:  user wants a definition/fact/standard or a comparison of concepts
+             ("what is X", "นิยาม", "คืออะไร", "X vs Y", "ต่างกันยังไง", "compare")
+  - analyze: explicit chart / Pareto / trend / data crunch on a SPECIFIC equipment ID
+             with a time range ("Pareto chart of EQ-1 60 days", "trend of EQ-2")
+  - report:  EXPLICIT imperative to author a maintenance/PM report on a SPECIFIC
+             equipment ID ("เขียนรายงาน MAKINO-a51nx 30 วัน", "write PM report for EQ-3")
+  - excel:   user explicitly asks for an .xlsx / Excel file as output
+             ("save as Excel", "ออกเป็น .xlsx", "Excel sheet of...")
+  - calc:    compute a number using a formula (stress, flow, OEE, MTBF, MAWP)
+  - plan:    propose a schedule / PM plan / action items (no data crunch needed)
+  - edit:    modify an existing file (rename, reformat, swap content)
+  - vision:  read an image/photo/PDF visually
+  - other:   meta-talk / conversation / not yet classified
+
+Disambiguation rules (first match wins - check IN ORDER):
+  1. Comparison or definition keywords ("vs", "ต่างกัน", "compare", "what is", "คืออะไร",
+     "นิยาม", "อธิบาย", "explain") -> action=lookup ALWAYS, even if other words appear.
+  2. ".xlsx" or explicit "Excel file" or "ออกเป็น Excel" mentioned -> action=excel
+  3. Explicit verb "เขียนรายงาน" / "write a report" + equipment ID + time range
+     -> action=report
+  4. "Pareto chart" / "downtime trend" / "data analysis" + equipment ID + time range
+     -> action=analyze
+  5. Ambiguous query about an equipment ID without an explicit author/analyze verb
+     -> action=lookup (the SAFE default - egress guard depends on this)
+  6. Pure question "what is X" without data context -> action=lookup
 
 CRITICAL distinctions:
   1. "ตอบเป็นภาษาไทย" / "in Thai" / "แปลเป็น..." are LANGUAGE PREFERENCES
@@ -140,7 +167,15 @@ def parse_intent(model: str, history: list[str]) -> dict[str, Any]:
         {"role": "system", "content": INTENT_PARSER_SYSTEM},
         {"role": "user", "content": user_block},
     ]
-    return chat_json(model, messages, json_schema=INTENT_PARSER_SCHEMA, temperature=0.1)
+    # temperature=0 + seed -> fully deterministic intent classification.
+    # Stability matters more than creativity here (action enum has 8 values).
+    return chat_json(
+        model,
+        messages,
+        json_schema=INTENT_PARSER_SCHEMA,
+        temperature=0.0,
+        seed=42,
+    )
 
 
 # ============================================================
