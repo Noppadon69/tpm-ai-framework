@@ -5,18 +5,20 @@ The orchestrator is synchronous (LangGraph), but Chainlit handlers are async.
 This bridge runs the orchestrator in a worker thread and pipes UI calls
 (ask, info) back to the Chainlit event loop via run_coroutine_threadsafe.
 
-Question/answer routing:
-    Each ui.ask() creates an asyncio.Queue stored in cl.user_session.
-    Both the @cl.action_callback (button clicks) AND on_message (free-form
-    text) route their input to that queue while 'awaiting_answer' is True.
-    This way users can EITHER click buttons OR type — both work.
+Strategy: AskUserMessage primitive
+    Why? Chainlit's send/stop button state is driven by the framework's own
+    "awaiting reply" tracking. cl.Message + actions does NOT register as a
+    pause - so the input box stays in "stop" mode and user can't send a new
+    message. cl.AskUserMessage IS a known pause primitive: input goes back
+    to "send" mode, framework handles routing of the next user reply.
+    Trade-off: no clickable action buttons. Options shown as letter-coded
+    text bullets; _expand_letter_choice() maps 'A'/'B' -> full option text.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 from concurrent.futures import Future
-from typing import Optional
 
 import chainlit as cl
 
@@ -24,22 +26,14 @@ from tpm_core.orchestrator import UI
 
 log = logging.getLogger(__name__)
 
-# Action name used for clarification choice buttons (must match @cl.action_callback)
-CLARIFY_ACTION_NAME = "tpm_clarify_choice"
-
 
 class ChainlitUI(UI):
     """
-    Implements the orchestrator UI contract using Chainlit primitives.
-
-    Lifecycle:
-        Created in Chainlit handler (async context).
-        Captured event_loop -> orchestrator runs in thread -> ui.ask()/info()
-        marshal back to event_loop via run_coroutine_threadsafe.
+    Implements the orchestrator UI contract using Chainlit's AskUserMessage.
 
     Threading model:
-        - orchestrator thread = blocked when calling .ask() until user responds
-        - chainlit thread = handles input/output normally
+        - orchestrator thread = blocks on ask() until user replies
+        - chainlit event loop = processes the AskUserMessage cleanly
     """
 
     def __init__(self, ask_timeout_s: float = 600.0):
@@ -76,56 +70,34 @@ class ChainlitUI(UI):
     # ============================================================
     async def _async_ask(self, question: str, options: list[str]) -> str:
         """
-        Send a regular cl.Message with action buttons attached.
-        User can EITHER click an action OR type free-form text.
-        Both paths feed into the same per-session asyncio.Queue.
+        Render question + options as letter-coded bullets via AskUserMessage.
+        User can:
+          - type 'A' / 'B' / 'C' (single letter, fast)
+          - type 'yes' / 'no' / 'แก้ไข' (confirm/revise tokens)
+          - type free-form description (any other text)
         """
         clean_options = [o.strip() for o in options if o.strip()]
-
-        # Per-session queue + awaiting flag (read by app.on_message + action_callback)
-        queue: asyncio.Queue[str] = asyncio.Queue()
-        cl.user_session.set("ask_queue", queue)
-        cl.user_session.set("ask_options", clean_options)
-        cl.user_session.set("awaiting_answer", True)
-
-        # Render
         body_lines = [f"❓ **{question}**"]
         if clean_options:
             body_lines.append("")
-            body_lines.append("_เลือกปุ่มข้างล่าง หรือพิมพ์อธิบายเองก็ได้_")
-
-        # Build action buttons (Chainlit shows them under the message)
-        actions: list[cl.Action] = []
-        for i, opt in enumerate(clean_options):
-            label = opt[:60]
-            actions.append(
-                cl.Action(
-                    name=CLARIFY_ACTION_NAME,
-                    value=opt,
-                    label=label,
-                    payload={"value": opt, "index": i},
-                )
+            for i, opt in enumerate(clean_options):
+                letter = "ABCDEF"[i] if i < 6 else "?"
+                body_lines.append(f"  **{letter})** {opt}")
+            body_lines.append("")
+            body_lines.append(
+                "💬 _พิมพ์ตัวอักษร A/B/C เพื่อเลือก หรือพิมพ์อธิบายเอง_"
             )
 
-        msg = cl.Message(
+        msg = await cl.AskUserMessage(
             content="\n".join(body_lines),
-            actions=actions or None,
+            timeout=self._ask_timeout_s,
             author="TPM AI",
-        )
-        await msg.send()
+        ).send()
 
-        # Wait for either a button click or a typed message
-        try:
-            answer = await asyncio.wait_for(queue.get(), timeout=self._ask_timeout_s)
-        except asyncio.TimeoutError:
-            log.warning("ChainlitUI.ask timed out after %.0fs", self._ask_timeout_s)
-            answer = ""
-        finally:
-            cl.user_session.set("awaiting_answer", False)
-            cl.user_session.set("ask_queue", None)
-            cl.user_session.set("ask_options", None)
-
-        return _expand_letter_choice(answer, clean_options)
+        if msg and isinstance(msg, dict):
+            answer = str(msg.get("output", "")).strip()
+            return _expand_letter_choice(answer, clean_options)
+        return ""
 
     async def _async_info(self, msg: str) -> None:
         await cl.Message(content=msg, author="TPM AI").send()
@@ -139,9 +111,9 @@ def _expand_letter_choice(answer: str, options: list[str]) -> str:
     if not answer or len(answer) > 4:
         return answer
     upper = answer.upper().rstrip(")").rstrip(".").strip()
-    if upper not in {"A", "B", "C", "D", "E"}:
+    if upper not in {"A", "B", "C", "D", "E", "F"}:
         return answer
-    idx = "ABCDE".index(upper)
+    idx = "ABCDEF".index(upper)
     if idx < len(options):
         return options[idx]
     return answer

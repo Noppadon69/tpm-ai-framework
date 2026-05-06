@@ -46,7 +46,7 @@ from tpm_core.orchestrator import (  # noqa: E402
 )
 from tpm_core.state import OrchestratorPhase, TPMState  # noqa: E402
 from tpm_search.quota import status as quota_status  # noqa: E402
-from tpm_ui.bridge import CLARIFY_ACTION_NAME, ChainlitUI, fmt_handoff  # noqa: E402
+from tpm_ui.bridge import ChainlitUI, fmt_handoff  # noqa: E402
 
 # Import workers so they're registered (orchestrator may dispatch)
 import tpm_workers  # noqa: F401, E402
@@ -90,28 +90,9 @@ async def on_chat_start():
         "- `what is ASTM A106 standard`",
         "- `ราคา bearing SKF 6205 ล่าสุด`",
         "",
-        "💡 ระบบจะถาม clarification ก่อนเริ่มงาน — กดปุ่มหรือพิมพ์อธิบายเพิ่ม",
+        "💡 ระบบจะถาม clarification ก่อนเริ่ม — พิมพ์ A/B/C หรืออธิบายเพิ่มได้เลย",
     ]
     await cl.Message(content="\n".join(panel_lines), author="System").send()
-
-
-# ============================================================
-# Action button handler (for clarification choices)
-# ============================================================
-@cl.action_callback(CLARIFY_ACTION_NAME)
-async def on_clarify_action(action: cl.Action):
-    """Route button click into the ChainlitUI ask queue."""
-    queue = cl.user_session.get("ask_queue")
-    if queue is None:
-        # Spurious click after timeout - just acknowledge
-        await cl.Message(
-            content="(button click came after the question expired)",
-            author="System",
-        ).send()
-        return
-    payload = getattr(action, "payload", None) or {}
-    value = payload.get("value") or getattr(action, "value", "") or ""
-    await queue.put(str(value))
 
 
 # ============================================================
@@ -127,14 +108,6 @@ async def on_message(message: cl.Message):
         cl.user_session.clear()
         await cl.Message(content="🔄 session cleared", author="System").send()
         return
-
-    # If we're currently awaiting an answer (orchestrator paused at ui.ask),
-    # route this message to the queue instead of starting a new orchestrator.
-    if cl.user_session.get("awaiting_answer"):
-        queue = cl.user_session.get("ask_queue")
-        if queue is not None:
-            await queue.put(user_text)
-            return
 
     # Build orchestrator with this session's UI
     ui = ChainlitUI(ask_timeout_s=600.0)
