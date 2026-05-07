@@ -197,6 +197,65 @@ def _slide_top_tasks(prs, week: WeekData):
                   font_size=16, bold=True, color=phase_color)
 
 
+def _slide_activity(prs, week: WeekData):
+    """Time-breakdown slide: in-AI vs out-of-AI minutes + categories."""
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+    _set_slide_bg(slide, COLOR_BG)
+
+    _add_text(slide, 0.6, 0.4, 12, 0.7, "⏱️ Time breakdown (manual log)",
+              font_size=32, bold=True, color=COLOR_PRIMARY)
+
+    a = week.activity
+    total_h = a.total_min / 60.0
+    in_ai_h = a.total_with_ai_min / 60.0
+    out_ai_h = a.total_without_ai_min / 60.0
+    ratio_pct = round(in_ai_h / total_h * 100, 1) if total_h > 0 else 0
+
+    if a.n_entries == 0:
+        _add_text(slide, 0.6, 3, 12, 1.5,
+                  "(no manual activity entries this week)\n"
+                  "Use:  python scripts/log_activity.py --interactive",
+                  font_size=18, color=COLOR_DIM)
+        return
+
+    # 4 KPI cards
+    kpis = [
+        ("Entries", _fmt_int(a.n_entries), COLOR_PRIMARY),
+        ("Total hours", f"{total_h:.1f}", COLOR_TEXT),
+        ("With AI", f"{in_ai_h:.1f}h ({ratio_pct}%)", COLOR_OK),
+        ("Without AI", f"{out_ai_h:.1f}h", COLOR_TEXT),
+    ]
+    card_w = 2.9
+    for i, (label, value, color) in enumerate(kpis):
+        left = 0.6 + i * (card_w + 0.15)
+        _add_text(slide, left, 1.5, card_w, 0.5, label,
+                  font_size=14, color=COLOR_DIM)
+        _add_text(slide, left, 2.0, card_w, 1.2, value,
+                  font_size=36, bold=True, color=color)
+
+    # Breakdown by category - left half
+    if a.by_category_min:
+        sorted_cats = sorted(a.by_category_min.items(), key=lambda kv: -kv[1])[:8]
+        lines = [f"{cat}: {mins/60:.1f}h ({mins:.0f} min)" for cat, mins in sorted_cats]
+        _add_text(slide, 0.6, 4.3, 6, 0.4, "Top categories",
+                  font_size=16, bold=True, color=COLOR_PRIMARY)
+        _add_bullet(slide, 0.6, 4.7, 6, 2.5, lines, font_size=13)
+
+    # Right half: AI usage context
+    rhs = [
+        f"AI sessions this week: {week.n_sessions}",
+        f"Active days w/ entries: {a.n_days_with_entries}/7",
+        f"AI session avg: {_fmt_seconds(week.avg_duration_ms)}",
+    ]
+    if total_h > 0 and in_ai_h > 0:
+        rhs.append("")
+        rhs.append(f"AI assist saves time on {ratio_pct}% of logged work")
+    _add_text(slide, 6.8, 4.3, 6, 0.4, "AI utilization",
+              font_size=16, bold=True, color=COLOR_PRIMARY)
+    _add_bullet(slide, 6.8, 4.7, 6, 2.5, rhs, font_size=13)
+
+
 def _slide_quality(prs, week: WeekData):
     blank_layout = prs.slide_layouts[6]
     slide = prs.slides.add_slide(blank_layout)
@@ -329,6 +388,7 @@ def generate_slides(
 
     _slide_title(prs, week)
     _slide_at_a_glance(prs, week)
+    _slide_activity(prs, week)
     _slide_top_tasks(prs, week)
     _slide_quality(prs, week)
     _slide_artifacts(prs, week)

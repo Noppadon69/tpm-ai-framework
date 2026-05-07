@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from tpm_activity.tracker import ActivitySummary, week_summary as activity_week_summary
 from tpm_night.budget_audit import audit_runtime
 from tpm_night.session_store import LOG_ROOT, SessionRecord, list_sessions
 
@@ -61,6 +62,8 @@ class WeekData:
     night_briefs: list[str] = field(default_factory=list)
     repeated_failures: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Manual (out-of-AI) activity from .tpm_context/activity_log/outside_ai/
+    activity: ActivitySummary = field(default_factory=ActivitySummary)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -247,4 +250,11 @@ def collect_week_data(
     week.git_commits = _collect_git_commits(start_dt)
     week.tools_added = _collect_tools(start_dt)
     week.night_briefs = _collect_briefs(date_strs)
+    week.activity = activity_week_summary(week.week_start, week.week_end)
+    # If there were manual entries on a day with no AI sessions, count it as
+    # an active day too (otherwise the title slide undercounts).
+    if week.activity.n_days_with_entries:
+        week.n_days_with_activity = max(
+            week.n_days_with_activity, week.activity.n_days_with_entries
+        )
     return week
