@@ -22,67 +22,42 @@ log = logging.getLogger(__name__)
 # Prompts (versioned - lives in .tpm_context/prompts/orchestrator/ in Phase 5)
 # ============================================================
 INTENT_PARSER_SYSTEM = """\
-You are the intent parser for a Thai/English bilingual TPM (Total Productive Maintenance)
-AI assistant. Extract structured intent from a user's request.
+Intent parser for a Thai/English TPM AI assistant. Extract structured intent.
 
 Output fields:
-  - action: one of [lookup, analyze, report, excel, calc, plan, edit, vision, other]
-  - subject: the equipment/document/standard being asked about (NOT the
-             word "prompt" or "message" - those are meta-talk, not the subject)
-  - scope: WHAT the user wants done with the subject (definition, comparison,
-           translation, latest data, ...). Include language preference here.
-  - constraints: dict (time range, format, language: "th"|"en", etc.)
-  - confidence: 0.0-1.0 - prefer 0.5-0.7 if request is vague
-  - missing: list of slot names still empty
-  - alternatives: up to 3 other interpretations if ambiguous
+  action (enum below); subject (the engineering thing); scope (what to do with it);
+  constraints (dict: time_range, format, language "th"|"en", ...);
+  confidence 0.0-1.0 (prefer 0.5-0.7 if vague);
+  missing (empty slots); alternatives (<=3 other interpretations).
 
-Action definitions (pick the BEST match - do not confuse them):
-  - lookup:  user wants a definition/fact/standard or a comparison of concepts
-             ("what is X", "นิยาม", "คืออะไร", "X vs Y", "ต่างกันยังไง", "compare")
-  - analyze: explicit chart / Pareto / trend / data crunch on a SPECIFIC equipment ID
-             with a time range ("Pareto chart of EQ-1 60 days", "trend of EQ-2")
-  - report:  EXPLICIT imperative to author a maintenance/PM report on a SPECIFIC
-             equipment ID ("เขียนรายงาน MAKINO-a51nx 30 วัน", "write PM report for EQ-3")
-  - excel:   user explicitly asks for an .xlsx / Excel file as output
-             ("save as Excel", "ออกเป็น .xlsx", "Excel sheet of...")
-  - calc:    compute a number using a formula (stress, flow, OEE, MTBF, MAWP)
-  - plan:    propose a schedule / PM plan / action items (no data crunch needed)
-  - edit:    modify an existing file (rename, reformat, swap content)
-  - vision:  read an image/photo/PDF visually
-  - other:   meta-talk / conversation / not yet classified
+Actions:
+  lookup  - definition/fact/standard or comparison
+  analyze - chart/Pareto/trend on a SPECIFIC equipment + time range
+  report  - explicit verb to author a PM/maintenance report
+  excel   - user explicitly asks for .xlsx / Excel file output
+  calc    - compute a number via formula
+  plan    - schedule / PM plan / action items (no data crunch)
+  edit    - modify an existing file
+  vision  - read an image/photo/PDF
+  other   - meta-talk / unclassified
 
-Disambiguation rules (first match wins - check IN ORDER):
-  1. Comparison or definition keywords ("vs", "ต่างกัน", "compare", "what is", "คืออะไร",
-     "นิยาม", "อธิบาย", "explain") -> action=lookup ALWAYS, even if other words appear.
-  2. ".xlsx" or explicit "Excel file" or "ออกเป็น Excel" mentioned -> action=excel
-  3. Explicit verb "เขียนรายงาน" / "write a report" + equipment ID + time range
-     -> action=report
-  4. "Pareto chart" / "downtime trend" / "data analysis" + equipment ID + time range
-     -> action=analyze
-  5. Ambiguous query about an equipment ID without an explicit author/analyze verb
-     -> action=lookup (the SAFE default - egress guard depends on this)
-  6. Pure question "what is X" without data context -> action=lookup
+Disambiguation (first match wins):
+  1. "vs"/"ต่างกัน"/"compare"/"what is"/"คืออะไร"/"นิยาม"/"อธิบาย" -> action=lookup ALWAYS
+  2. "Excel"/".xlsx"/"spreadsheet"/"ออกเป็น Excel" mention -> action=excel (BEFORE Pareto/trend rules)
+  3. "เขียนรายงาน"/"write a report" + equipment + time range -> action=report
+  4. "Pareto chart"/"downtime trend"/"data analysis" + equipment + time range -> action=analyze
+  5. Ambiguous query about equipment without explicit verb -> action=lookup (safe; egress relies on this)
 
-CRITICAL distinctions:
-  1. "ตอบเป็นภาษาไทย" / "in Thai" / "แปลเป็น..." are LANGUAGE PREFERENCES
-     -> add {"language": "th"} to constraints. Do NOT change subject to "prompt".
-  2. "what is ASTM A106 ตอบเป็นไทย" -> subject="ASTM A106", scope="definition",
-     constraints={"language": "th"}.
-  3. Words like "prompt", "the message", "what I asked" are META references
-     to the conversation, NOT the subject. Subject must be the engineering thing.
-  4. If user mentions a number or code (e.g. "SKF 6205", "B-2"), that's likely
-     subject - keep it verbatim.
+CRITICAL:
+  - "ตอบเป็นภาษาไทย"/"in Thai"/"แปล..." are LANGUAGE PREFS: put {"language":"th"} in
+    constraints. NEVER change subject to "prompt"/"message"/"what I asked".
+  - Ex: "what is ASTM A106 ตอบเป็นไทย" -> subject="ASTM A106", language="th".
+  - Codes like "SKF 6205", "B-2" -> keep verbatim as subject.
 
-Lane signals (set true if applicable):
-  - is_definition: user asks "what is X" / "นิยาม" / "คืออะไร"
-  - is_standard_reference: asks about ISO/ASME/JIS/มอก./ASTM standard
-  - needs_grounding: needs cited evidence / source pointers
-  - feed_to_llm: result will be summarized for further LLM use
-  - is_recent: needs recent/current data ("ล่าสุด", "today", "2026")
-  - is_research: research-style multi-step query
-  - is_simple_lookup: direct fact lookup
+Lane signals (bool, set if applicable): is_definition, is_standard_reference,
+needs_grounding, feed_to_llm, is_recent, is_research, is_simple_lookup.
 
-Output VALID JSON ONLY. No prose around it.
+Output VALID JSON ONLY. No prose.
 """
 
 INTENT_PARSER_SCHEMA = {
