@@ -33,12 +33,15 @@ def _http_chat(
     *,
     temperature: float = 0.2,
     seed: int | None = None,
+    num_predict: int | None = None,
     format: str | dict | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> dict[str, Any]:
     options: dict[str, Any] = {"temperature": temperature}
     if seed is not None:
         options["seed"] = seed
+    if num_predict is not None:
+        options["num_predict"] = num_predict
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -63,6 +66,7 @@ def chat(
     *,
     temperature: float = 0.2,
     seed: int | None = None,
+    num_predict: int | None = None,
     json_mode: bool = False,
     json_schema: dict | None = None,
     retries: int = DEFAULT_RETRIES,
@@ -86,7 +90,8 @@ def chat(
         try:
             t0 = time.perf_counter()
             resp = _http_chat(
-                model, messages, temperature=temperature, seed=seed, format=fmt, timeout=timeout
+                model, messages, temperature=temperature, seed=seed,
+                num_predict=num_predict, format=fmt, timeout=timeout,
             )
             dt = int((time.perf_counter() - t0) * 1000)
             content = resp.get("message", {}).get("content", "")
@@ -105,6 +110,7 @@ def chat_json(
     *,
     temperature: float = 0.1,
     seed: int | None = None,
+    num_predict: int | None = None,
     json_schema: dict | None = None,
     retries: int = DEFAULT_RETRIES,
     timeout: float = DEFAULT_TIMEOUT,
@@ -121,6 +127,7 @@ def chat_json(
             messages,
             temperature=temperature,
             seed=seed,
+            num_predict=num_predict,
             json_mode=json_schema is None,
             json_schema=json_schema,
             retries=0,

@@ -142,14 +142,19 @@ def parse_intent(model: str, history: list[str]) -> dict[str, Any]:
         {"role": "system", "content": INTENT_PARSER_SYSTEM},
         {"role": "user", "content": user_block},
     ]
-    # temperature=0 + seed -> fully deterministic intent classification.
-    # Stability matters more than creativity here (action enum has 8 values).
+    # temperature=0.05 + fixed seed -> near-deterministic intent classification.
+    # Pure temp=0 + seed=42 + json_schema combined to deterministically produce
+    # an empty response on certain prompts (Bug #6: "FMEA vs FTA ต่างกันยังไง").
+    # Tiny temperature (0.05) breaks the degenerate sampling without breaking
+    # day-to-day stability (action enum changes only on truly ambiguous prompts).
+    # num_predict caps runtime; timeout=60 fails fast vs Ollama 180s default.
     return chat_json(
         model,
         messages,
         json_schema=INTENT_PARSER_SCHEMA,
-        temperature=0.0,
+        temperature=0.05,
         seed=42,
+        timeout=60.0,
     )
 
 
