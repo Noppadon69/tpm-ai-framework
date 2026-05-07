@@ -47,6 +47,23 @@ fi
 export OLLAMA_FLASH_ATTENTION=1
 export OLLAMA_KV_CACHE_TYPE=q8_0
 
+# OLLAMA_MODELS sanity: some Ollama Windows installs put the real registry
+# inside a nested `models/` subdir (registry env -> D:\X, actual content
+# at D:\X\models\manifests\...). Without this, `ollama serve` boots with
+# total_blobs=0 and the API returns models:[]. Auto-correct without
+# touching the user registry. Idempotent.
+if [[ -n "${OLLAMA_MODELS:-}" ]]; then
+    om="${OLLAMA_MODELS//\\//}"
+    primary="$om/manifests/registry.ollama.ai/library"
+    nested="$om/models/manifests/registry.ollama.ai/library"
+    if [[ ! -d "$primary" || -z "$(ls -A "$primary" 2>/dev/null)" ]] \
+        && [[ -d "$nested" && -n "$(ls -A "$nested" 2>/dev/null)" ]]; then
+        export OLLAMA_MODELS="$OLLAMA_MODELS/models"
+        echo "[fix] OLLAMA_MODELS auto-adjusted: nested models/ subdir detected"
+        echo "      now using: $OLLAMA_MODELS"
+    fi
+fi
+
 if command -v ollama &> /dev/null; then
     if ! pgrep -f "ollama serve" > /dev/null 2>&1 \
         && ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then

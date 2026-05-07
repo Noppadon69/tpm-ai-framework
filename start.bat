@@ -42,6 +42,18 @@ REM Reference: Hermes-A3B + 128K ctx trick on 12 GB cards
 set "OLLAMA_FLASH_ATTENTION=1"
 set "OLLAMA_KV_CACHE_TYPE=q8_0"
 
+REM OLLAMA_MODELS sanity: some Ollama Windows installs put the real registry
+REM inside a nested `models\` subdir. Auto-detect + correct so ollama serve
+REM does not boot with zero models. Idempotent.
+if defined OLLAMA_MODELS (
+    if not exist "%OLLAMA_MODELS%\manifests\registry.ollama.ai\library\*" (
+        if exist "%OLLAMA_MODELS%\models\manifests\registry.ollama.ai\library\*" (
+            set "OLLAMA_MODELS=%OLLAMA_MODELS%\models"
+            echo [fix] OLLAMA_MODELS auto-adjusted to nested models\ subdir
+        )
+    )
+)
+
 where ollama >nul 2>&1
 if not errorlevel 1 (
     tasklist /fi "imagename eq ollama.exe" 2>nul | findstr /i "ollama" >nul
