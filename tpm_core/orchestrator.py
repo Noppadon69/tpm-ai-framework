@@ -226,7 +226,8 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
     """
     from tpm_search import Intent as SearchIntent
     from tpm_search import search as l3_search
-    from tpm_search.egress import EgressBlocked
+    from tpm_search.egress import EgressBlocked, classify
+    from tpm_search.types import Classification
 
     # Worker actions vs lookup actions
     WORKER_ACTIONS = {"report", "excel", "calc", "edit", "analyze"}
@@ -236,6 +237,22 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
         if intent is None:
             state.phase = OrchestratorPhase.FAILED
             state.error = "plan: no confirmed intent"
+            return state
+
+        # Bug #4 fix: data-classification gate at the PLAN node, before any
+        # routing. Catches CONFIDENTIAL/RESTRICTED subjects that previously
+        # slipped past the L3-only egress check when the intent action was
+        # report/analyze/excel (which dispatches to a local worker without
+        # touching L3). The L3 egress check still runs further down as
+        # defense in depth.
+        cls = classify(f"{intent.subject} {state.user_request}")
+        if cls in (Classification.CONFIDENTIAL, Classification.RESTRICTED):
+            state.phase = OrchestratorPhase.FAILED
+            state.error = (
+                f"egress blocked: classification={cls.value} for subject "
+                f"{intent.subject!r} - data-classification gate at plan node"
+            )
+            ui.info(f"[FAIL] {state.error}")
             return state
 
         # ----- Route 1: Worker (report / excel / calc) -----
