@@ -19,8 +19,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ctypes
 import logging
 import os
+import platform
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,6 +59,35 @@ from tpm_night.discrepancy import compare_runs  # noqa: E402
 from tpm_search.quota import status as quota_status  # noqa: E402
 
 log = logging.getLogger(__name__)
+
+
+# ─── Windows sleep prevention (G-04 patch) ───────────────────────────────────
+_ES_CONTINUOUS      = 0x80000000
+_ES_SYSTEM_REQUIRED = 0x00000001
+
+def _prevent_sleep() -> bool:
+    """Keep Windows awake for the night cycle duration. No-op on non-Windows."""
+    if platform.system() != "Windows":
+        return False
+    try:
+        ctypes.windll.kernel32.SetThreadExecutionState(
+            _ES_CONTINUOUS | _ES_SYSTEM_REQUIRED
+        )
+        log.info("sleep-prevention: Windows will not sleep during night cycle")
+        return True
+    except Exception as exc:
+        log.warning("sleep-prevention: failed to set execution state: %s", exc)
+        return False
+
+def _restore_sleep() -> None:
+    """Re-enable normal sleep when night cycle finishes."""
+    if platform.system() != "Windows":
+        return
+    try:
+        ctypes.windll.kernel32.SetThreadExecutionState(_ES_CONTINUOUS)
+    except Exception:
+        pass
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def main() -> int:
@@ -98,6 +129,9 @@ def main() -> int:
     print("=" * 64)
     print(f"TPM AI Night Cycle - date={args.date}")
     print("=" * 64)
+
+    # ---- 0. Prevent Windows sleep for duration of night cycle (G-04) ----
+    _prevent_sleep()
 
     # ---- 1. Load sessions ----
     sessions = list_sessions(date=args.date)
@@ -188,6 +222,9 @@ def main() -> int:
     print("=" * 64)
     print(f"Night Cycle complete. Read brief: {path}")
     print("=" * 64)
+
+    # ---- Restore normal sleep settings (G-04) ----
+    _restore_sleep()
     return 0
 
 
