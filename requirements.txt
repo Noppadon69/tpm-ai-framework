@@ -1,5 +1,6 @@
 # requirements.txt — TPM AI Phase 0 baseline
-# ref: MASTER_PLAN_v5.md § 17 (OSS catalog) + § 22.2
+# ref: MASTER_PLAN_v6.md § 17 (OSS catalog) + § 22.2
+# updated: 2026-05-09 — G-01 (llama-index), G-06 (version bounds), G-09 (mem0→chromadb)
 
 # ============================================================
 # Core orchestration
@@ -17,9 +18,14 @@ litellm>=1.50.0       # OpenAI-compatible proxy + router
 # ============================================================
 # Knowledge — 3 layers
 # ============================================================
-chromadb>=0.5.0       # Layer 2 vector DB
-# pageindex>=0.3       # Layer 1 tree nav — install separately if PyPI lacks
-# openkb>=0.5          # Layer 1 wiki compiler — install separately
+chromadb>=0.5.0,<0.6       # Layer 2 vector DB (+ user_memory collection แทน Mem0 — G-09)
+# Layer 1 — markitdown + llama-index (ทดแทน openkb+pageindex — G-01)
+markitdown>=0.0.1          # Microsoft MIT — PDF/Word/Excel → Markdown
+llama-index>=0.11,<0.12    # document ingestion + query engine
+llama-index-embeddings-ollama>=0.3,<0.4
+llama-index-vector-stores-chroma>=0.2,<0.3
+# pageindex — NOT on PyPI (removed per G-01)
+# openkb    — NOT on PyPI (removed per G-01)
 
 # ============================================================
 # Search (Layer 3) — lane assignment per § 6.4.0
@@ -57,7 +63,7 @@ reportlab>=4.2
 weasyprint>=63        # backup PDF generator
 pypdf>=5.0
 camelot-py[base]>=0.11
-markitdown>=0.0.1
+# markitdown — already declared in Knowledge section (G-01)
 
 # ============================================================
 # Vision / image
@@ -91,7 +97,8 @@ xxhash>=3.5
 # ============================================================
 # Memory
 # ============================================================
-mem0ai>=0.1.40
+# mem0ai — แทนด้วย ChromaDB collection "user_memory" (G-09: ไม่ต้องการ service แยก)
+# mem0ai>=0.1.40  ← commented out
 
 # ============================================================
 # Observability (self-hosted)
