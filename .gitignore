@@ -166,3 +166,10 @@ logs/chainlit*.out
 .chainlit/translations/
 .chainlit/.langgraph_*
 .files/
+
+# ------------------------------------------------------------
+# GitHub PAT files - NEVER commit
+# ------------------------------------------------------------
+.gh_token
+*.token
+gh_token*
