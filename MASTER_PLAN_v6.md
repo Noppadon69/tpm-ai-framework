@@ -3137,6 +3137,339 @@ async def verify_audit_log():
 
 ---
 
+## 15.7 🆕 Reflexion N-round Extension (v6.1 design draft, 2026-05-10)
+
+> **Status:** Spec drafted, NOT YET implemented. Target: Phase 4 Day 5 (post-internship Day 1) หรือ Phase 5.
+> **Origin:** User insight 2026-05-10 — "ถ้าระบบไม่ได้ทำงานตอนกลางวันที่มีคนรออยู่ แต่เป็นช่วง Night Cycle ... เราอาจจะปลดล็อกจำนวนรอบให้มัน Reflexion สัก 10 รอบ"
+> **Reference:** Shinn et al. 2023 — "Reflexion: Language Agents with Verbal Reinforcement Learning" (arXiv:2303.11366)
+
+### 15.7.1 ปัญหาที่แก้
+
+§ 15.2-15.4 ปัจจุบันทำ replay → analyze → correct **1 รอบ** ต่อ task. เหมาะกับ daytime ที่ user รอ. แต่ night ไม่มี user รอ → unlock N rounds เพื่อ converge บน logic ที่ดีกว่า.
+
+**แต่ "10 รอบ" ไม่ใช่ silver bullet** — Shinn et al. เตือน 2 อย่าง:
+1. **Confidence-loop trap** — model มั่นใจเพิ่มในคำตอบที่ผิด ถ้า judge เป็น self-judge
+2. **Diminishing returns** — round 5+ มัก no-improvement; ควร early-stop
+
+### 15.7.2 Design Decisions (4 questions ตัดสินใจแล้ว)
+
+| Q | Question | Decision |
+|---|---|---|
+| Q1 | Reflect บน task ไหน? | `confidence < 0.70 OR user_flag=true OR severity in {medium, high}` — NOT all sessions (เปลือง budget), NOT only FAILED (FAILED มัก env error ไม่ใช่ logic) |
+| Q2 | Stop criteria? | Multi-condition: (a) hard cap 10 rounds, (b) early stop ถ้า Δconfidence < 5% ติด 2 rounds, (c) token budget cap 50K/session, (d) time cap 30 นาที/session |
+| Q3 | Judge ใคร? | **Multi-tier waterfall:** (1) Ground truth ถ้ามี (calc → SymPy/numpy), (2) Vision-RAG cross-check (§ 15.8) ถ้า task = factual lookup, (3) heavy_reasoning model (different prompt — ลด bias), (4) self-judge เป็น fallback สุดท้าย พร้อม `low-trust` tag |
+| Q4 | Output? | **Phase 1:** patch ใส่ morning brief เท่านั้น — user approve manually. **Phase 2 (อนาคต):** ถ้า user approve rate > 80% ติด 30 วัน → auto-promote เข้า prompt registry. **ห้าม** auto-promote เป็น code change. |
+
+### 15.7.3 Pseudocode
+
+```python
+async def reflexion_round_n(task, max_rounds=10):
+    """Extends § 15.2 daytime_replay() — replaces single replay with N iterations."""
+    rounds = []
+    current_answer = task.original_output
+    current_conf = task.original_confidence
+
+    judge = select_judge(task)  # Q3 waterfall
+
+    for n in range(max_rounds):
+        round_start = time.time()
+
+        # 1. Generate self-critique using prior context
+        critique = await heavy_reasoning.critique(
+            task=task,
+            current_answer=current_answer,
+            prior_critiques=[r.critique for r in rounds],
+            instruction="What is wrong or missing? Be specific.",
+        )
+
+        # 2. Generate revised answer
+        revised = await orchestrator.revise(
+            task=task,
+            critique=critique,
+            prior_attempts=[r.answer for r in rounds],
+        )
+
+        # 3. Score with selected judge
+        new_conf, judge_notes = await judge.score(revised, task.context)
+
+        rounds.append(RoundResult(
+            n=n, critique=critique, answer=revised,
+            confidence=new_conf, judge_notes=judge_notes,
+            tokens_used=count_tokens([critique, revised, judge_notes]),
+            elapsed_sec=time.time() - round_start,
+        ))
+
+        # 4. Stop conditions (Q2)
+        if new_conf >= 0.95: break  # confident enough
+        if n >= 2 and abs(new_conf - rounds[-2].confidence) < 0.05: break  # plateau
+        if sum(r.tokens_used for r in rounds) > 50_000: break  # token cap
+        if sum(r.elapsed_sec for r in rounds) > 30 * 60: break  # time cap
+
+        current_answer, current_conf = revised, new_conf
+
+    # 5. Verdict
+    verdict = (
+        "improve"   if new_conf > task.original_confidence + 0.10
+        else "no_change" if abs(new_conf - task.original_confidence) <= 0.10
+        else "regress"  # never propose if final < original
+    )
+
+    return ReflexionResult(
+        original=task.original_output, final=current_answer,
+        rounds=rounds, judge_used=judge.name, verdict=verdict,
+    )
+```
+
+### 15.7.4 Risks & Mitigations
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Confidence-loop trap (Shinn et al.) | High | Q3 multi-tier judge — self-judge เป็น fallback สุดท้ายเท่านั้น; ground truth + Vision-RAG เป็น primary |
+| Heat / fan / battery (2-3 ชม. full GPU/night) | Medium | Reuse `thermal_guard.py` — abort ถ้า CPU/GPU > 75°C; require AC power OR battery > 80% |
+| Runaway token cost | Medium | Cap 50K tokens + 30 min/session; logged ใน budget_audit |
+| Useless on synthetic data (test_battery only) | High | DEFER actual rollout จน Phase 1 Day 1 ของ internship (มี real failures) |
+| Conflict with auto-prompt-update tendency | Medium | Phase 1 = morning brief patch ONLY; Phase 2 auto-promote ต้อง > 80% user approval rate ติด 30 วัน |
+| Regress (final < original) | Low | Verdict = "regress" → DO NOT propose; log for analysis only |
+
+### 15.7.5 Dependencies (blocking)
+
+- ✅ § 15.2-15.4 baseline (DONE — `daytime_replay`, `analyze_discrepancies`, `propose_corrections`)
+- ⏸️ Phase 3 Day 4 Auditor 8-layer + CoVe — provides judge backend (Q3 tier 3-4)
+- ⏸️ Phase 3 Day 2 Vision worker — provides judge backend tier 2 (via § 15.8)
+- ⏸️ Real failure data from Phase 1 Day 1 of Toshiba internship
+
+**Note:** Phase 3 Day 4 (Auditor 8-layer + CoVe) and § 15.7 Reflexion overlap significantly in the "judge" responsibility. When implementing, re-scope D so Auditor IS the judge backend for § 15.7 — avoid building two separate judging systems.
+
+### 15.7.6 Acceptance Criteria
+
+1. Run `night_cycle.py --reflexion-rounds 10` on test_battery (10 prompts) → no crash, no thermal abort, completes within 30 min/session
+2. Confidence improvement > 10% on at least 3/10 prompts (else design failed — re-spec)
+3. Morning brief shows new `reflexion_summary` section: rounds run, final confidence delta, judge tier used, verdict
+4. User can disable: `night_cycle.py --no-reflexion` flag (default: enabled when `confidence_trigger` met)
+5. Budget audit logs token spend per session — visible in `weekly_progress.pptx`
+
+### 15.7.7 Implementation Plan
+
+| Step | Description | Estimated effort |
+|---|---|---|
+| 1 | Refactor `daytime_replay()` to return `RoundResult` instead of single output | 3 hr |
+| 2 | Implement `select_judge()` waterfall (Q3) | 4 hr |
+| 3 | Wire 4 stop conditions (Q2) | 2 hr |
+| 4 | Add `reflexion_summary` section to morning brief | 2 hr |
+| 5 | Tests: synthetic + thermal + budget | 3 hr |
+| 6 | Documentation in RUNBOOK.md | 1 hr |
+| **Total** | | **~15 hr (2-3 night sessions)** |
+
+---
+
+## 15.8 🆕 Vision-RAG Cross-Check (v6.1 design draft, 2026-05-10)
+
+> **Status:** Spec drafted, NOT YET implemented. Target: Phase 3 Day 6 (after Vision worker exists at Day 2).
+> **Origin:** User insight 2026-05-10 — "ไม่ค่อยเชื่อใจ RAG ... ใช้ Vision สแกนเอกสารทั้งหมดตอนกลางคืนแล้วค่อยมาเทียบ ... ถ้าขัดแย้ง ระบบจะไม่มั่วเลือกเอง แต่จะไฮไลท์จุดที่ขัดแย้งใส่ Morning Brief พร้อมแนบรูปต้นฉบับมาให้คุณฟันธง"
+
+### 15.8.1 ปัญหาที่แก้
+
+RAG (markitdown chunks → ChromaDB → LLM citation) มีจุดอ่อน 4 ข้อ:
+
+| Failure mode | ผลกระทบ |
+|---|---|
+| **Chunk noise** | chunker ตัดประโยคผิด → context หลุด → LLM ตีความผิด |
+| **Hallucination** | LLM เติมข้อความระหว่าง chunks → cite source ที่ไม่ได้พูดเรื่องนั้น |
+| **Drift** | chunks เป็น derivative; ถ้า PDF ต้นฉบับ update → chunks ไม่ตามจน re-ingest |
+| **Editor bias** | คนแก้ wiki ผิด (intentional/accident) → RAG inherit ความผิดอย่างเงียบ |
+
+**Solution:** Vision worker (Qwen2.5-VL-3B per § 6.4) อ่าน PDF ต้นฉบับโดยตรงทุกคืน → independent second opinion → flag conflicts ใน morning brief พร้อมรูปหน้าต้นฉบับให้ user ฟันธง
+
+**สำคัญ:** Vision **ไม่ใช่** ground truth — มัน hallucinate ได้เหมือนกัน. Conflict = "ทั้ง 2 ไม่ตรงกัน, มนุษย์ต้องตัดสิน" — ไม่ใช่ "Vision ถูก RAG ผิด"
+
+### 15.8.2 9 Loopholes (mapped + mitigated)
+
+| # | Loophole | Mitigation |
+|---|---|---|
+| 1 | Vision ≠ ground truth (VL-3B hallucinate, esp. Thai/handwriting/numbers OCR เช่น 0/O, 1/I, 5/S, 6/G) | Vision = "second opinion"; conflict = uncertainty flag, NOT verdict — user ตัดสินเสมอ |
+| 2 | Compute budget (500 pages × 15s/page ≈ 2 ชม./คืน) | **Incremental scan:** เฉพาะ docs ใหม่/เปลี่ยน + 5% sampled re-verify ของเก่า; full scan เดือนละครั้ง |
+| 3 | "Conflict" definition fuzzy ("245 bar" vs "245 bars" vs "245.0 bar") | **Normalization layer ก่อน compare:** unit canonical (bar/Pa/kPa → SI); whitespace/dash strip; case-fold; sig-fig round (2 decimal) |
+| 4 | Granularity mismatch (RAG = chunk ~500 tokens, Vision = page-level) | **Provenance metadata in ChromaDB:** `chunk_id → {pdf_path, page_num, char_offset}`. Compare ทำที่ระดับ page (aggregate chunks) |
+| 5 | Latency to truth — 24-hr risk window | **Tiered policy:** safety-critical (LOTO/MAWP/hazmat per AGENTS § 9) → force pre-verify ก่อนตอบ; non-critical → async OK |
+| 6 | Both wrong silent fail (RAG hallucinate X + Vision hallucinate X identical) | Safety-critical: 3rd source via Inquiry-First (§ 8) — ถาม user ไม่เชื่อใจตัวเอง |
+| 7 | Storage cost (Vision-extracted text = corpus #2) | **DECISION:** Vision = CHECK only (compare-only), NOT alternate index; results discarded after compare ยกเว้น conflicts |
+| 8 | Thai language gap (VL-3B trained primarily CN+EN; Toshiba docs = TH+EN+JP mix) | **Hybrid stack:** Tesseract OCR (Thai/Eng/Jpn traineddata) ทำ base text extraction; Vision VL ใช้เฉพาะ diagrams/handwriting/แบบ DXF ที่ Tesseract ทำไม่ได้ |
+| 9 | VRAM swap latency (Vision 2GB + Orch 5GB = 7GB ติด budget line) | **Serialize:** orch unload → Vision load → batch process → Vision unload → orch reload. +30-60s/swap (acceptable ใน night cycle) |
+
+### 15.8.3 Pseudocode
+
+```python
+async def vision_rag_crosscheck(date):
+    """
+    Run between § 15.4 propose_corrections and § 15.6 Other Night Tasks.
+    Schedule: ~03:00-03:30 (after Self-Correction, before Wiki Updates)
+    """
+    # 1. Get queries from today's sessions that used RAG
+    queries = db.query("""
+        SELECT id, original_prompt, output, knowledge_sources, classification
+        FROM completed_tasks
+        WHERE DATE(completed_at) = ?
+          AND knowledge_sources LIKE '%ChromaDB%'
+    """, date)
+
+    if not queries: return []
+
+    # 2. Resolve cited chunks -> unique pages (provenance, loophole #4)
+    page_set = set()
+    query_to_pages = {}
+    for q in queries:
+        chunks = json.loads(q.knowledge_sources)
+        pages = {(c["pdf_path"], c["page_num"]) for c in chunks if c.get("page_num")}
+        page_set.update(pages)
+        query_to_pages[q.id] = pages
+
+    # 3. Incremental check (loophole #2) - skip pages re-scanned within last 7 days
+    pages_to_scan = filter_stale_or_new(page_set, max_age_days=7)
+    log.info(f"vision-rag: scanning {len(pages_to_scan)}/{len(page_set)} pages")
+
+    # 4. SWAP MODELS (loophole #9)
+    await orchestrator_unload()
+    await vision_load("qwen2.5-vl-3b")
+
+    vision_extracts = {}
+    for pdf, page in pages_to_scan:
+        try:
+            text = await tesseract_extract(pdf, page)  # Thai/Eng/Jpn base (loophole #8)
+            if needs_vl(pdf, page):  # diagrams/handwriting detection
+                vl_text = await vision_extract(pdf, page)
+                text = merge(text, vl_text)
+            vision_extracts[(pdf, page)] = text
+            cache_vision_result(pdf, page, text, ttl_days=30)
+        except Exception as e:
+            log.warning(f"vision-rag: failed page {pdf}:{page} - {e}")
+
+    # 5. SWAP BACK
+    await vision_unload()
+    await orchestrator_load()
+
+    # 6. Compare RAG answers vs Vision-extracted text
+    conflicts = []
+    for q in queries:
+        pages = query_to_pages[q.id]
+        vision_corpus = " ".join(
+            vision_extracts.get(p, "") or load_cached_vision(p) or ""
+            for p in pages
+        )
+
+        # Normalize before compare (loophole #3)
+        rag_norm = normalize(q.output, opts=["units", "case", "ws", "sigfig"])
+        vis_norm = normalize(vision_corpus, opts=["units", "case", "ws", "sigfig"])
+
+        # Semantic alignment with tolerance
+        agreement = await semantic_align(rag_norm, vis_norm, model="orchestrator")
+
+        if agreement < 0.85:
+            severity = "high" if q.classification in ("LOTO", "MAWP", "hazmat") else "medium"
+            conflicts.append(VisionRAGConflict(
+                task_id=q.id,
+                query=q.original_prompt,
+                rag_answer=q.output,
+                vision_extract=vision_corpus[:500] + "...",  # truncate for brief
+                pages=list(pages),
+                page_image_paths=[render_page_png(p, dpi=150) for p in pages],
+                agreement_score=agreement,
+                severity=severity,
+            ))
+
+    # 7. Save to morning brief
+    save_to_morning_brief({
+        "section": "vision_rag_conflicts",
+        "scanned_pages": len(pages_to_scan),
+        "total_queries": len(queries),
+        "conflict_count": len(conflicts),
+        "items": sorted(conflicts, key=lambda c: c.severity, reverse=True),
+    })
+
+    return conflicts
+```
+
+### 15.8.4 Morning Brief Section Format
+
+```markdown
+## 🔍 Vision-RAG Cross-Check — 3 conflicts (1 high, 2 medium)
+
+### ⚠️ HIGH severity — Conflict #1
+- **Query:** "MAKINO-a51nx max injection pressure spec?"
+- **Classification:** safety-relevant (pressure limit)
+- **RAG answered:** "245 bar"
+- **Vision extracted (page 12):** "247 bar"
+- **Agreement:** 67%
+- **Pages cited:** MAKINO_manual.pdf p.12
+- **Page image:** [embedded inline - 800px PNG]
+
+**Action required:**
+- [ ] A: Trust RAG (245 bar) — user verified manually
+- [ ] B: Trust Vision (247 bar) — RAG chunk error
+- [ ] C: Check field meter — both could be wrong
+- [ ] D: Re-OCR page (Vision may have misread)
+```
+
+### 15.8.5 Dependencies (blocking)
+
+- ⏸️ **Phase 3 Day 2 Vision worker** (Qwen2.5-VL-3B + Tesseract integration) — REQUIRED
+- ⏸️ **Phase 1 Day 1-3 markitdown + llama-index ingestion** — REQUIRED for chunk-to-page provenance
+- ⏸️ **Real Toshiba PDFs** to verify against — REQUIRED for meaningful conflicts (synthetic data won't show real chunk errors)
+- ✅ Morning brief infrastructure (already in `tpm_night/morning_brief.py`)
+
+### 15.8.6 Acceptance Criteria
+
+1. **VRAM safety:** Swap orch ↔ Vision succeeds 10/10 times without OOM (8GB GPU budget hold)
+2. **Normalization correctness:**
+   - "245 bar" == "245 bars" → agreement > 0.95
+   - "245 bar" == "245.0 bar" → agreement > 0.95
+   - "245 bar" vs "247 bar" → agreement < 0.70 (conflict flagged)
+   - "SKD11" == "SKD-11" → agreement > 0.95
+3. **Incremental scan:** 100-page corpus + 1 new page → only 1 page re-scanned (+ 5 sampled = 6 total)
+4. **Morning brief inline images:** PNG embedded directly (not just link); resolution 150 DPI
+5. **Severity routing:** safety-critical conflicts sort to top of brief
+
+### 15.8.7 Implementation Plan
+
+| Step | Description | Estimated effort |
+|---|---|---|
+| 1 | Wire chunk → page provenance in markitdown ingestion (loophole #4) | 4 hr |
+| 2 | Build normalization layer (loophole #3) — units, case, sig-fig, dash | 6 hr |
+| 3 | Hybrid Tesseract + VL extraction (loophole #8) | 5 hr |
+| 4 | Model swap orchestration with VRAM monitor (loophole #9) | 4 hr |
+| 5 | `vision_rag_crosscheck()` main function | 4 hr |
+| 6 | Morning brief renderer with inline PNG (loophole #5 partial) | 3 hr |
+| 7 | Pre-verify path for safety-critical (loophole #5 daytime) | 4 hr |
+| 8 | Tests: VRAM swap, normalization correctness, conflict detection | 6 hr |
+| **Total** | | **~36 hr (~5 night sessions; pegged to Phase 3 Day 6)** |
+
+---
+
+## 15.9 Updated Schedule (pending § 15.7 + § 15.8 implementation)
+
+When § 15.7 + § 15.8 are implemented, § 15.1 schedule will become:
+
+```
+22:00  Activity Pattern Analysis
+22:30  Tool Creation/Search Queue
+23:30  🆕 Daytime Task Replay (NOW with Reflexion N-round § 15.7 — extends 23:30-02:30)
+02:30  🆕 Discrepancy Analysis (Reflexion-aware)
+03:00  🆕 Self-Correction Proposals
+03:30  🆕 Vision-RAG Cross-Check (§ 15.8 — pending Vision worker)
+04:00  Wiki Updates (incremental)
+04:30  Cache Refresh
+05:00  Code Quality + GitHub Backup + Hash Chain Verify
+05:30  Generate Morning Brief (now with reflexion_summary + vision_rag_conflicts sections)
+06:00  Cleanup
+```
+
+**Trade-off note:** New tasks compress 22:00-06:00 from 8 hours to ~7.5 hours of useful time. If real corpus grows large (>1000 pages) → Vision-RAG becomes bottleneck → may need to split: incremental nightly + full weekly.
+
+### 15.9.1 CloakBrowser (anti-bot Chromium) — explicitly out of scope
+
+User asked 2026-05-10 about adding CloakBrowser (https://github.com/CloakHQ/CloakBrowser) to support potential scraping needs. Decision: **SKIP** — added to `.tpm_context/tool_watchlist.md` instead. Reasons in watchlist entry; summary: license footprint conflicts with rules #1 and #9; TOS perception risk for intern + thesis defense; no concrete use case in current scope; arms-race brittle.
+
+---
+
 # 16. Explanation & Transparency System
 
 > **🆕 ใหม่ใน v5.0 — สำหรับสร้าง progress report + ให้ user เรียนรู้**
