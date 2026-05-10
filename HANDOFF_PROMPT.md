@@ -10,11 +10,13 @@ You are continuing work on the TPM AI Assistant project. Read the context below 
 
 ## Project identity
 - Name: TPM AI (Total Productive Maintenance assistant)
-- Repo: `D:\tpm_workspace` (Windows 11 + WSL2 + Git Bash + PowerShell available)
-- Maintainer: TPM intern — 4th-year Mechanical Engineering student
+- Repo (main): `D:\tpm_workspace` → https://github.com/Noppadon69/tpm-ai-framework (PUBLIC, pushed 2026-05-10)
+- Repo (private knowledge): `D:\tpm_workspace\.tpm_context` → https://github.com/Noppadon69/tpm-knowledge-private (PRIVATE — CONFIDENTIAL data, separate git repo)
+- OS: Windows 11 + WSL2 + Git Bash + PowerShell available
+- Maintainer: TPM intern — 4th-year Mechanical Engineering student (GitHub: Noppadon69)
 - Goal: local-first LLM helper for maintenance reports/calc/lookups — built during Toshiba internship (Mold & Die / washing machine division), portable to senior project afterward
 - Language: replies in Thai (mixed with English tech terms) — match the user's tone
-- Date context: today is 2026-05-09 (or later); training cutoff differs
+- Date context: today is 2026-05-10 (or later); training cutoff differs
 
 ## Hardware constraints (HARD)
 - Lenovo Legion 5 / 32 GB RAM / RTX 5060 Laptop / **8 GB VRAM**
@@ -133,6 +135,10 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - **Worker-level egress** CONFIDENTIAL subjects routed to local workers used to bypass L3 egress check → classify() gate added at node_plan entry (commit 926c044, Bug #4)
 - **OPENSSL_Uplink crash on Windows** intermittent crash after [init] log, before parse_intent → fixed by Windows reboot (Bug #7, recur risk: monitor and reboot if seen)
 - **INTENT_PARSER_SYSTEM size** keep under 2000 chars (audit budget); current 1834 chars after shrink (commit 363dff2)
+- **gh CLI PATH after winget install** → existing PowerShell sessions don't see `gh` until restarted. One-line fix: `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")` — or call full path `& "C:\Program Files\GitHub CLI\gh.exe"`. From Bash use `"/c/Program Files/GitHub CLI/gh.exe"`
+- **NEVER paste PAT in chat** → GitHub Personal Access Tokens get logged in transcripts + Anthropic API + LLM context. If accidentally pasted → revoke immediately at https://github.com/settings/tokens. Use `gh auth login` → "Paste an authentication token" flow in LOCAL terminal (token never leaves machine). `.gh_token` / `*.token` / `gh_token*` already gitignored as defense (commit 239eccc)
+- **winget install --silent** can hang for minutes silently → drop `--silent` to see progress, or fall back to direct MSI download from GitHub releases. msstore source has SSL cert issues — use `--source winget` to skip
+- **gh repo create --push** pushes only the current branch (= main), NOT worktree branches (`claude/*`) → safe to use even when worktrees exist
 
 ## Toshiba internship context (Mold & Die / washing machine)
 - Internship domain: Injection Mold + Press Die สำหรับชิ้นส่วนเครื่องซักผ้า
@@ -151,18 +157,33 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - **Microsoft Copilot escalation** → wired but never triggers (local works fine)
 - **DSPy optimization** → Phase 5, after ≥1 month production use
 
-## URGENT — pending ที่ค้างจาก session 2026-05-08
-**Push commits ไป GitHub remote ยังไม่เสร็จ** — ทั้ง 2 repos ยังเป็น local-only:
-1. main repo `D:\tpm_workspace`: 7 new commits since fa11046 handoff (latest: 926c044 Bug #4 fix)
-2. `.tpm_context` repo: 4 new commits (latest: fa4f969 tool_watchlist + OfficeCLI eval)
+## ✅ Recently resolved (session 2026-05-10)
+**GitHub push complete** — ทั้ง 2 repos pushed สำเร็จ:
+1. `tpm-ai-framework` PUBLIC — 11 commits pushed (รวม v6 bible, gap patches G-01/G-04/G-06/G-09, security gitignore)
+2. `tpm-knowledge-private` PRIVATE — 8 commits pushed
+3. gh CLI v2.92.0 ติดตั้งที่ `C:\Program Files\GitHub CLI\gh.exe`, auth via Windows keyring (Noppadon69)
 
-User ต้อง: สร้าง 2 repos บน GitHub (`tpm-ai-framework` public + `tpm-knowledge-private` PRIVATE), แล้ว `git remote add origin` + `git push -u origin main` ที่ทั้ง 2 dirs. ขั้นตอนละเอียดมีในประวัติ chat ก่อนหน้า — AI ใหม่ ถามได้ถ้า user ลืม
+**v6 gap patches ที่ค้างจาก session 2026-05-09 ตอนนี้ commit แล้ว:**
+- `8f8c588` docs: add MASTER_PLAN_v6.md (5814 lines, 26 sections)
+- `3deb406` chore(deps): G-01/G-06/G-09 (markitdown + llama-index, version bounds, mem0→chromadb)
+- `83c191c` fix(night): G-04 prevent Windows sleep
+- `8175712` chore(models): scaffold dirs (coder, embedding, vision, writer, heavy_*)
+- `239eccc` chore(security): gitignore PAT/token files
+
+## ⏸️ Pending จาก session 2026-05-10 (ตกลงไว้ — ยังไม่ลงมือเขียน)
+**Consolidated spec session** — เพิ่ม 3 sub-sections ใน MASTER_PLAN_v6.md § 15.5+:
+- § 15.5 Reflexion 10-round Night Mode (Shinn et al. style — limit by Δconfidence + token cap)
+- § 15.6 Vision-RAG Cross-Check (RAG day vs Vision night → conflict highlight in morning brief)
+- § 15.7 (or `tool_watchlist.md` entry) CloakBrowser — license/TOS concerns, watchlist only
+
+แต่ละ idea มี 4-9 design questions ที่ต้องตอบใน spec ก่อน implement (รายละเอียดใน chat history หรือถามใหม่ได้)
 
 ## Recommended next steps (user picks — เรียงตาม "ก่อน internship เดือนหน้า")
-- A) **Push commits to GitHub** (ก่อนสุด — backup baseline ก่อน feature ใหม่)
+- ~~A) Push commits to GitHub~~ ✅ DONE 2026-05-10
+- **A2) Spec session — Reflexion + Vision-RAG + CloakBrowser-watchlist** (consolidate ใน v6 § 15.5+) — design ตกผลึกแล้ว, ~50-70K tokens เขียน
 - B) **Phase 2 Day 3 Inquiry-First** — UX gain ชัด, ~30K tokens
 - C) **Phase 3 Day 3 Calc worker** — SymPy integration (engineering grading point), ~50K
-- D) **Phase 3 Day 4 Auditor 8-layer + CoVe** — accuracy boost, ~100K (ใหญ่ — เก็บไว้ทำกับ data จริง)
+- D) **Phase 3 Day 4 Auditor 8-layer + CoVe** — accuracy boost, ~100K (ใหญ่ — เก็บไว้ทำกับ data จริง). **Note:** ทับซ้อนกับ Reflexion judge (A2) — ถ้าทำ A2 spec แล้ว D ควรปรับ scope
 - E) **Phase 3 Day 5 Tool Registry + MCP** — swap workers runtime
 - F) **Section 25 build-out** — MoldAnalyseNode + PM shot counter (Toshiba-specific)
 - G) **Real testing more** — D2 24-prompt battery, multi-day night cycle
@@ -206,7 +227,7 @@ mv HANDOFF_PROMPT.md .ai/handoff.md
 D:\tpm_workspace\
 ├── MASTER_PLAN_v6.md            ← bible (5814 lines, 26 sections incl. Mold & Die + Gap Analysis)
 ├── MASTER_PLAN_v5.md            ← backup (ไม่ลบ)
-├── HANDOFF_PROMPT.md            ← this file (updated 2026-05-09)
+├── HANDOFF_PROMPT.md            ← this file (updated 2026-05-10)
 ├── PHASE_0_NEXT_STEPS.md
 ├── README.md
 ├── app.py                        ← Chainlit entry
@@ -295,17 +316,18 @@ python tests\test_orchestrator_flow.py --fast
 
 ---
 
-**Generated:** 2026-05-08 (after Phase 4 Day 2 + Bug #2/4/6/7 batch fixes)
-**Project state:** ~52% by plan / ~80% functional
-**Plan version:** MASTER_PLAN_v6.md (26 sections)
-**Last session highlights:**
-- ✅ Phase 4 closed (Day 2 Activity Tracker — log_activity.py + 7-slide weekly deck)
-- ✅ Bug #2 fixed: OLLAMA_MODELS path auto-correct in start.sh/.bat (commit 46a6bdd, verified live)
-- ✅ Bug #4 fixed: worker-level egress gate at node_plan (commit 926c044, classify-verified offline)
-- ✅ Bug #6 mitigated: parse_intent temp=0.05 + timeout=60s (commit bbf100d)
-- ✅ Bug #7 fixed: OPENSSL_Uplink crash → Windows reboot resolved (4/4 PASS confirmed)
-- ✅ INTENT_PARSER_SYSTEM shrunk 3657 → 1834 chars (commit 363dff2)
-- ✅ test_battery.py soak runner (commit 261747a) — 10-prompt MockUI suite
-- ✅ tool_watchlist.md added (.tpm_context) — OfficeCLI bookmarked for re-eval after internship Week 1
-- ⚠️ Pending: GitHub push for both repos (no remote yet)
-**Recommended next:** A (push to GitHub) → B (Phase 2 Day 3 Inquiry-First) → C (Phase 3 Day 3 Calc)
+**Generated:** 2026-05-10 (after GitHub push + security gitignore + spec design draft)
+**Project state:** ~52% by plan / ~80% functional (no phase progress this session — focus was meta: backup + planning)
+**Plan version:** MASTER_PLAN_v6.md (26 sections; § 15.5-15.7 spec pending — drafted in chat)
+**Last session highlights (2026-05-10):**
+- ✅ GitHub push complete — both repos backed up (no longer single-point-of-failure on local disk)
+  - PUBLIC: https://github.com/Noppadon69/tpm-ai-framework (11 commits)
+  - PRIVATE: https://github.com/Noppadon69/tpm-knowledge-private (8 commits)
+- ✅ Committed 5 v6 gap patches that were dirty in working tree (8f8c588, 3deb406, 83c191c, 8175712 + .tpm_context 1f96d0b)
+- ✅ Reverted MASTER_PLAN_v5.md to frozen backup (was accidentally modified with §25 mirror)
+- ✅ Security: gitignore for `.gh_token`/`*.token`/`gh_token*` (commit 239eccc); workflow learning that PAT must NEVER be pasted in chat
+- ✅ Bootstrap memory system at `C:\Users\Lenovo\.claude\projects\D--tpm-workspace\memory\` (6 files: index + user + 2× feedback + project + paths)
+- ✅ Design discussions captured: Reflexion 10-round (Shinn et al.), Vision-RAG cross-check (9 loopholes mapped), CloakBrowser assessment (skip → watchlist; license + TOS concerns)
+- ⚠️ Security incident: user pasted PAT in chat → revoked + regenerated; lesson committed to gotchas list
+- ⏸️ Pending: Spec session for § 15.5-15.7 (Reflexion + Vision-RAG + CloakBrowser-watchlist)
+**Recommended next:** A2 (consolidated spec session — design ready) → B (Phase 2 Day 3 Inquiry-First) → C (Phase 3 Day 3 Calc)
