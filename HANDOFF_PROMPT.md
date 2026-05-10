@@ -156,6 +156,8 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - **Activity Tracker Tier 3** → OS-level app tracking via PowerShell (active-win-listener ไม่รองรับ WSL2)
 - **Microsoft Copilot escalation** → wired but never triggers (local works fine)
 - **DSPy optimization** → Phase 5, after ≥1 month production use
+- **docling / whisper.cpp / yt-dlp** → evaluated 2026-05-10, on `.tpm_context/tool_watchlist.md`. docling = Phase 1 A/B candidate vs markitdown (better tables/layout). whisper.cpp + yt-dlp = future video-knowledge pipeline (Phase 4.5+); whisper handles Thai+Japanese (Toshiba context). yt-dlp has TOS caveats — per-video consent only. **Combo:** yt-dlp → whisper.cpp → docling/markitdown → ChromaDB = video → searchable RAG.
+- **huashu-design** (Claude Skill for HTML/PPTX/animation generation) → defer to senior project (commercial license $1.8K/yr; personal/academic free). Not on watchlist yet — separate decision required.
 
 ## ✅ Recently resolved (session 2026-05-10)
 **GitHub push complete** — ทั้ง 2 repos pushed สำเร็จ:
