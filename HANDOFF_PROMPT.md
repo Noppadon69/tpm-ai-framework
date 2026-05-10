@@ -157,7 +157,7 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - **Microsoft Copilot escalation** → wired but never triggers (local works fine)
 - **DSPy optimization** → Phase 5, after ≥1 month production use
 - **docling / whisper.cpp / yt-dlp** → evaluated 2026-05-10, on `.tpm_context/tool_watchlist.md`. docling = Phase 1 A/B candidate vs markitdown (better tables/layout). whisper.cpp + yt-dlp = future video-knowledge pipeline (Phase 4.5+); whisper handles Thai+Japanese (Toshiba context). yt-dlp has TOS caveats — per-video consent only. **Combo:** yt-dlp → whisper.cpp → docling/markitdown → ChromaDB = video → searchable RAG.
-- **huashu-design** (Claude Skill for HTML/PPTX/animation generation) → defer to senior project (commercial license $1.8K/yr; personal/academic free). Not on watchlist yet — separate decision required.
+- **huashu-design** (Claude Skill for HTML/PPTX/animation generation) → **NOW on watchlist** (commit d8c1c29 era). User pragmatic call 2026-05-10: green-light for intern personal use (2-month internship + Toshiba now Chinese-owned = low scrutiny). Wire as one of multiple slide options when Phase 3 Day 5 Tool Registry built. Senior project = free academic license.
 
 ## ✅ Recently resolved (session 2026-05-10)
 **GitHub push complete** — ทั้ง 2 repos pushed สำเร็จ:
