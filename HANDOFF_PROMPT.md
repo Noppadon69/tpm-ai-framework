@@ -170,24 +170,31 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - `8175712` chore(models): scaffold dirs (coder, embedding, vision, writer, heavy_*)
 - `239eccc` chore(security): gitignore PAT/token files
 
-## ⏸️ Pending จาก session 2026-05-10 (ตกลงไว้ — ยังไม่ลงมือเขียน)
-**Consolidated spec session** — เพิ่ม 3 sub-sections ใน MASTER_PLAN_v6.md § 15.5+:
-- § 15.5 Reflexion 10-round Night Mode (Shinn et al. style — limit by Δconfidence + token cap)
-- § 15.6 Vision-RAG Cross-Check (RAG day vs Vision night → conflict highlight in morning brief)
-- § 15.7 (or `tool_watchlist.md` entry) CloakBrowser — license/TOS concerns, watchlist only
+## ✅ Spec session complete (session 2026-05-10)
+**Consolidated spec landed in MASTER_PLAN_v6** (commit 867882e):
+- § 15.7 Reflexion N-round Extension — extends existing § 15.2-15.4 from 1 round → N (not new system, refactor)
+- § 15.8 Vision-RAG Cross-Check — independent verifier; 9 loopholes mapped + mitigated
+- § 15.9 Updated schedule (when implemented) + § 15.9.1 CloakBrowser out-of-scope note
+- `.tpm_context/tool_watchlist.md` — CloakBrowser SKIP entry (commit f7cb84b) with 5 alternatives + revisit gates
 
-แต่ละ idea มี 4-9 design questions ที่ต้องตอบใน spec ก่อน implement (รายละเอียดใน chat history หรือถามใหม่ได้)
+ทั้ง 2 spec มี: design questions answered (4 + 9), pseudocode, risks/mitigations, dependencies, acceptance criteria, implementation plan estimates (~15 hr + ~36 hr).
+
+**Important:** Both clearly marked **NOT YET IMPLEMENTED**. Dependencies blocked on:
+- Phase 1 Day 1 (real Toshiba data) — for meaningful failure mode reflection
+- Phase 3 Day 2 (Vision worker) — § 15.8 needs Qwen2.5-VL-3B + Tesseract integration
+- Phase 3 Day 4 (Auditor 8-layer + CoVe) — should be **re-scoped to BE the § 15.7 judge backend** (avoid building 2 separate judging systems)
 
 ## Recommended next steps (user picks — เรียงตาม "ก่อน internship เดือนหน้า")
-- ~~A) Push commits to GitHub~~ ✅ DONE 2026-05-10
-- **A2) Spec session — Reflexion + Vision-RAG + CloakBrowser-watchlist** (consolidate ใน v6 § 15.5+) — design ตกผลึกแล้ว, ~50-70K tokens เขียน
-- B) **Phase 2 Day 3 Inquiry-First** — UX gain ชัด, ~30K tokens
+- ~~A) Push commits to GitHub~~ ✅ DONE 2026-05-10 (11 main + 8 .tpm_context commits backed up)
+- ~~A2) Spec session — Reflexion + Vision-RAG + CloakBrowser-watchlist~~ ✅ DONE 2026-05-10 (commits 867882e + f7cb84b)
+- B) **Phase 2 Day 3 Inquiry-First** — UX gain ชัด, ~30K tokens. **เด่นสุด** ที่ทำได้ก่อน internship เพราะไม่รอ data จริง
 - C) **Phase 3 Day 3 Calc worker** — SymPy integration (engineering grading point), ~50K
-- D) **Phase 3 Day 4 Auditor 8-layer + CoVe** — accuracy boost, ~100K (ใหญ่ — เก็บไว้ทำกับ data จริง). **Note:** ทับซ้อนกับ Reflexion judge (A2) — ถ้าทำ A2 spec แล้ว D ควรปรับ scope
+- D) **Phase 3 Day 4 Auditor 8-layer + CoVe** — **RE-SCOPED 2026-05-10**: Auditor ควรเป็น judge backend ของ § 15.7 Reflexion, ไม่ใช่ระบบแยก. ~80K (ลดจาก 100K เดิม)
 - E) **Phase 3 Day 5 Tool Registry + MCP** — swap workers runtime
 - F) **Section 25 build-out** — MoldAnalyseNode + PM shot counter (Toshiba-specific)
 - G) **Real testing more** — D2 24-prompt battery, multi-day night cycle
-- H) **Phase 1 Day 1-3** — markitdown + llama-index (needs real docs from internship Day 1)
+- H) **Phase 1 Day 1-3** — markitdown + llama-index (needs real docs from internship Day 1; blocks § 15.8 Vision-RAG cross-check)
+- I) **Update § 15.1 schedule** when § 15.7 + § 15.8 actually implemented (currently § 15.9 has the proposed updated schedule)
 
 ## Working style I prefer (please match)
 - One coherent task per turn, then commit before next task
@@ -316,18 +323,17 @@ python tests\test_orchestrator_flow.py --fast
 
 ---
 
-**Generated:** 2026-05-10 (after GitHub push + security gitignore + spec design draft)
-**Project state:** ~52% by plan / ~80% functional (no phase progress this session — focus was meta: backup + planning)
-**Plan version:** MASTER_PLAN_v6.md (26 sections; § 15.5-15.7 spec pending — drafted in chat)
+**Generated:** 2026-05-10 (after GitHub push + security gitignore + spec session complete)
+**Project state:** ~52% by plan / ~80% functional (no phase progress this session — focus was meta: backup + spec drafts)
+**Plan version:** MASTER_PLAN_v6.md (26 top-level sections; § 15 expanded with 15.7 + 15.8 + 15.9 v6.1 spec drafts)
 **Last session highlights (2026-05-10):**
 - ✅ GitHub push complete — both repos backed up (no longer single-point-of-failure on local disk)
-  - PUBLIC: https://github.com/Noppadon69/tpm-ai-framework (11 commits)
-  - PRIVATE: https://github.com/Noppadon69/tpm-knowledge-private (8 commits)
+  - PUBLIC: https://github.com/Noppadon69/tpm-ai-framework (12 commits)
+  - PRIVATE: https://github.com/Noppadon69/tpm-knowledge-private (9 commits)
 - ✅ Committed 5 v6 gap patches that were dirty in working tree (8f8c588, 3deb406, 83c191c, 8175712 + .tpm_context 1f96d0b)
 - ✅ Reverted MASTER_PLAN_v5.md to frozen backup (was accidentally modified with §25 mirror)
 - ✅ Security: gitignore for `.gh_token`/`*.token`/`gh_token*` (commit 239eccc); workflow learning that PAT must NEVER be pasted in chat
 - ✅ Bootstrap memory system at `C:\Users\Lenovo\.claude\projects\D--tpm-workspace\memory\` (6 files: index + user + 2× feedback + project + paths)
-- ✅ Design discussions captured: Reflexion 10-round (Shinn et al.), Vision-RAG cross-check (9 loopholes mapped), CloakBrowser assessment (skip → watchlist; license + TOS concerns)
+- ✅ Spec session complete: § 15.7 Reflexion N-round + § 15.8 Vision-RAG + § 15.9 schedule (commit 867882e, 333 lines); CloakBrowser SKIP entry to tool_watchlist (commit f7cb84b)
 - ⚠️ Security incident: user pasted PAT in chat → revoked + regenerated; lesson committed to gotchas list
-- ⏸️ Pending: Spec session for § 15.5-15.7 (Reflexion + Vision-RAG + CloakBrowser-watchlist)
-**Recommended next:** A2 (consolidated spec session — design ready) → B (Phase 2 Day 3 Inquiry-First) → C (Phase 3 Day 3 Calc)
+**Recommended next:** B (Phase 2 Day 3 Inquiry-First, ~30K) → C (Phase 3 Day 3 Calc, ~50K) → D (Phase 3 Day 4 Auditor — re-scoped to BE judge for § 15.7)
