@@ -496,13 +496,17 @@ def _run_worker_branch(state: TPMState, intent: Intent, ui: UI) -> TPMState:
     from pathlib import Path
 
     from tpm_workers.base import WorkerInput, WorkerType
+    from tpm_workers.calc import run_calc_worker
     from tpm_workers.data_loader import list_equipment_tags
     from tpm_workers.excel import run_excel_worker
     from tpm_workers.report import run_report_worker
 
+    action = intent.action.lower()
+
     # Resolve target equipment from intent.subject - try fuzzy match
+    # (skip for pure calc: subject is usually a quantity, not equipment)
     target = intent.subject or ""
-    if target:
+    if target and action != "calc":
         known = list_equipment_tags()
         # exact tag match wins
         if target not in known:
@@ -517,13 +521,16 @@ def _run_worker_branch(state: TPMState, intent: Intent, ui: UI) -> TPMState:
                 state.error = f"ambiguous equipment tag: {matches}"
                 return state
 
-    worker_type = (
-        WorkerType.EXCEL if intent.action.lower() in ("excel", "calc") else WorkerType.REPORT
-    )
-    output_subdir = (
-        "reports" if worker_type == WorkerType.REPORT
-        else "excel"
-    )
+    if action == "calc":
+        worker_type = WorkerType.CALC
+        output_subdir = "calc"
+    elif action == "excel":
+        worker_type = WorkerType.EXCEL
+        output_subdir = "excel"
+    else:
+        worker_type = WorkerType.REPORT
+        output_subdir = "reports"
+
     inp = WorkerInput(
         worker_type=worker_type,
         session_id=state.session_id,
@@ -538,6 +545,8 @@ def _run_worker_branch(state: TPMState, intent: Intent, ui: UI) -> TPMState:
 
     if inp.worker_type == WorkerType.REPORT:
         result = run_report_worker(inp, model=DEFAULT_MODEL)
+    elif inp.worker_type == WorkerType.CALC:
+        result = run_calc_worker(inp)
     else:
         result = run_excel_worker(inp)
 
