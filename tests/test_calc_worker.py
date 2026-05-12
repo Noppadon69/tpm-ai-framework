@@ -65,6 +65,17 @@ def t_pick_formula():
     check("pick: ohm's law",  pick_formula("ohm's law I=2 R=10") == "ohms_law")
     check("pick: clamping",   pick_formula("clamping force ของ mold") == "clamping_force")
     check("pick: nothing",    pick_formula("how are you") is None)
+    # Regression test for soak-discovered bug 2026-05-12: LLM-hallucinated
+    # intent.scope must NOT steer the picker; only user text + subject feed it.
+    check("pick: ignore scope hallucination",
+          pick_formula(
+              "clamping force P=100 MPa A=0.01 m^2",
+              intent={"subject": "clamping force P=100 MPa A=0.01 m^2",
+                      "scope": "calculate stress"},
+          ) == "clamping_force")
+    # Multi-word keyword should outscore single-word mention
+    check("pick: multi-word wins tie",
+          pick_formula("clamping force computation, stress mentioned") == "clamping_force")
 
 
 # ============================================================

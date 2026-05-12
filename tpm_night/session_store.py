@@ -40,6 +40,12 @@ class SessionRecord(BaseModel):
     model_name: str = ""
     duration_ms: int = 0
     notes: list[str] = Field(default_factory=list)
+    # Inquiry-First (Section 8 - added 2026-05-12)
+    inquiry_question: Optional[str] = None
+    inquiry_answer: Optional[str] = None
+    inquiry_route: Optional[str] = None
+    inquiry_skip_reason: Optional[str] = None
+    inquiry_payload: Optional[str] = None
 
 
 # ============================================================
@@ -81,6 +87,11 @@ def save_session(state: Any, *, started_at: Optional[datetime] = None) -> Path:
         error=s.error,
         model_name=s.model_name,
         duration_ms=duration_ms,
+        inquiry_question=s.inquiry_question,
+        inquiry_answer=s.inquiry_answer,
+        inquiry_route=s.inquiry_route,
+        inquiry_skip_reason=s.inquiry_skip_reason,
+        inquiry_payload=s.inquiry_payload,
     )
 
     out_dir = _date_dir(s.started_at)

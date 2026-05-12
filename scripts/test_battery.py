@@ -136,6 +136,102 @@ DEFAULT_PROMPTS = [
         "ui_answers": ["yes"],
         "is_worker": True,
     },
+    # ---- D2 24-prompt battery additions (2026-05-12) ----
+    # Calc worker (Phase 3 Day 3 - new this session)
+    {
+        "id": "calc_stress",
+        "category": "calc",
+        "prompt": "compute stress F=1000 N A=0.05 m^2",
+        "ui_answers": ["yes"],
+        "is_worker": True,
+    },
+    {
+        "id": "calc_ohms_law",
+        "category": "calc",
+        "prompt": "ohm's law I=2 A R=10 ohm",
+        "ui_answers": ["yes"],
+        "is_worker": True,
+    },
+    {
+        "id": "calc_cooling_time_th",
+        "category": "calc",
+        "prompt": "คำนวณ cooling time wall t=3 mm",
+        "ui_answers": ["yes"],
+        "is_worker": True,
+    },
+    {
+        "id": "calc_clamping_force",
+        "category": "calc",
+        "prompt": "clamping force P=100 MPa A=0.01 m^2",
+        "ui_answers": ["yes"],
+        "is_worker": True,
+    },
+    # Mold defect lookups (Section 25)
+    {
+        "id": "lookup_defect_flash",
+        "category": "lookup_mold",
+        "prompt": "Flash defect ใน injection mold เกิดจากอะไร",
+        "ui_answers": ["yes"],
+    },
+    {
+        "id": "lookup_defect_sink",
+        "category": "lookup_mold",
+        "prompt": "sink mark ของชิ้นพลาสติกแก้ยังไง",
+        "ui_answers": ["yes"],
+    },
+    {
+        "id": "lookup_defect_burr",
+        "category": "lookup_mold",
+        "prompt": "Burr ใน press die เกิดจากสาเหตุอะไร",
+        "ui_answers": ["yes"],
+    },
+    # Inquiry-First skip path (general knowledge / standard ref)
+    {
+        "id": "inquiry_skip_triz",
+        "category": "inquiry_skip",
+        "prompt": "TRIZ principle 35 คืออะไร อธิบายในภาษาไทย",
+        "ui_answers": ["yes"],
+    },
+    {
+        "id": "inquiry_skip_iso",
+        "category": "inquiry_skip",
+        "prompt": "ISO 9001:2015 มาตรฐานกำหนดอะไรเรื่อง maintenance",
+        "ui_answers": ["yes"],
+    },
+    # Inquiry-First ASK path (user-specific subject)
+    {
+        "id": "inquiry_ask_pm",
+        "category": "inquiry_ask",
+        "prompt": "PM schedule ของ MAKINO V33 ครั้งล่าสุดเมื่อไร",
+        "ui_answers": ["yes", "C"],   # confirm intent then inquiry -> search
+    },
+    {
+        "id": "inquiry_ask_boiler",
+        "category": "inquiry_ask",
+        "prompt": "Boiler #2 ของเราซ่อมครั้งล่าสุดเมื่อไร",
+        "ui_answers": ["yes", "C"],
+    },
+    # Material lookup (Section 25)
+    {
+        "id": "lookup_skd11",
+        "category": "lookup_material",
+        "prompt": "SKD11 hardness และ application คืออะไร",
+        "ui_answers": ["yes"],
+    },
+    # Compound / edge cases
+    {
+        "id": "compare_skd",
+        "category": "lookup_compare",
+        "prompt": "SKD11 vs SKD61 ต่างกันยังไง ใช้งานต่างกันอย่างไร",
+        "ui_answers": ["yes"],
+    },
+    {
+        "id": "scientific_calc",
+        "category": "calc",
+        "prompt": "compute pressure with F=1.5e3 N and A=0.002 m^2",
+        "ui_answers": ["yes"],
+        "is_worker": True,
+    },
 ]
 
 

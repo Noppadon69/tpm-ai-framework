@@ -208,21 +208,30 @@ def pick_formula(text: str, intent: dict[str, Any] | None = None) -> Optional[st
     """
     Return the formula id whose keyword set best matches the request text.
     None if nothing matches.
+
+    Only the user-supplied text + intent.subject feeds the haystack. intent.scope
+    is LLM-generated and routinely hallucinates calculation names (e.g. picking
+    "calculate stress" for a clamping-force prompt), which would silently steer
+    the picker to the wrong formula.
+
+    Multi-word keywords get a length bonus (1 point per extra token) so
+    "clamping force" outscores a bare "stress" mention.
     """
-    haystack = text.lower()
+    haystack_parts = [text.lower()]
     if intent:
-        haystack += " " + str(intent.get("subject", "")).lower()
-        haystack += " " + str(intent.get("scope", "")).lower()
+        subj = str(intent.get("subject", "")).lower()
+        if subj:
+            haystack_parts.append(subj)
+    haystack = " ".join(haystack_parts)
 
     best: tuple[int, Optional[str]] = (0, None)
     for fid, f in FORMULA_LIBRARY.items():
         score = 0
-        for kw in f.keywords_th:
-            if kw.lower() in haystack:
-                score += 2
-        for kw in f.keywords_en:
-            if kw.lower() in haystack:
-                score += 2
+        for kw in (*f.keywords_th, *f.keywords_en):
+            k = kw.lower()
+            if k in haystack:
+                # Base score 2 + 1 per extra word (rewards specificity)
+                score += 2 + max(0, k.count(" "))
         if score > best[0]:
             best = (score, fid)
     return best[1]
