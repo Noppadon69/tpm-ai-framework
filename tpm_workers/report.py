@@ -322,4 +322,26 @@ def run_report_worker(
     )
     result.confidence = 0.85 if s3.success else 0.55
     result.success = s4.success and bool(files)
+
+    # 5. Auditor (Section 12 - 7 of 8 layers, deterministic, no LLM)
+    try:
+        from tpm_workers.auditor import audit_worker_result
+        ctx = {
+            "claim_text": report_md,
+            "source_text": str(payload.get("metrics", {})) + " " + str(payload.get("cm_recent", "")),
+        }
+        report = audit_worker_result(result, ctx)
+        # Append auditor findings (don't clobber existing reviewer findings)
+        for v in report.layers:
+            if v.findings:
+                for f in v.findings:
+                    tag = "" if v.severity == "info" else f" [{v.severity}]"
+                    result.auditor_findings.append(f"{v.layer}{tag}: {f}")
+        if not report.passed:
+            result.auditor_passed = False
+        # Audit confidence dampens worker confidence
+        result.confidence = min(result.confidence, report.overall_confidence)
+    except Exception as e:  # noqa: BLE001
+        log.warning("auditor failed: %s", e)
+
     return result

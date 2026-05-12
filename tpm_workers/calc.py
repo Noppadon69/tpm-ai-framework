@@ -506,4 +506,27 @@ def run_calc_worker(inp: WorkerInput) -> WorkerResult:
         "pretty": calc.pretty,
     }
     result.confidence = 1.0 if not calc.warnings else 0.85
+
+    # Auditor (Section 12 - lightweight pass for calc results)
+    try:
+        from tpm_workers.auditor import audit_worker_result
+        ctx = {
+            "claim_text": calc.pretty,
+            # source_text = the formula + inputs as a canonical reference
+            "source_text": (
+                f"{formula.expression} with " +
+                ", ".join(f"{k}={v}" for k, v in (extras.get("values") or {}).items())
+                + f" -> {calc.output_value}"
+            ),
+        }
+        report = audit_worker_result(result, ctx)
+        for v in report.layers:
+            if v.findings:
+                tag = "" if v.severity == "info" else f" [{v.severity}]"
+                for f in v.findings:
+                    result.auditor_findings.append(f"{v.layer}{tag}: {f}")
+        result.auditor_passed = report.passed
+    except Exception as e:  # noqa: BLE001
+        log.warning("calc auditor failed: %s", e)
+
     return result
