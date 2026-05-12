@@ -102,6 +102,9 @@ class TPMState(BaseModel):
     # ---- inquiry-first (§ 8) - filled when AI needs missing info ----
     inquiry_question: Optional[str] = None
     inquiry_answer: Optional[str] = None
+    inquiry_route: Optional[str] = None      # user_answered | location_provided | search | skipped
+    inquiry_skip_reason: Optional[str] = None
+    inquiry_payload: Optional[str] = None    # the user's actual answer or location
 
     # ---- planning ----
     subtasks: list[dict[str, Any]] = Field(default_factory=list)

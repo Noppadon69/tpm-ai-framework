@@ -1,9 +1,12 @@
 """
-tpm_core.orchestrator - LangGraph minimal flow (Phase 2 demo)
-ref: MASTER_PLAN_v5.md § 10.4
+tpm_core.orchestrator - LangGraph minimal flow (Phase 2)
+ref: MASTER_PLAN_v6.md § 10.4
 
-Minimal pipeline (Phase 2 scope):
-    INIT -> CLARIFY (loop) -> PLAN (search L3) -> DONE
+Pipeline (Phase 2 scope):
+    INIT -> CLARIFY (loop) -> INQUIRY (Section 8) -> PLAN (search L3 / worker) -> DONE
+
+INQUIRY is a no-LLM node: deterministic skip rules (general knowledge,
+night cycle, emergency) + pattern-based user-specific detection.
 
 Future phases will add: WORK (worker subgraphs), AUDIT, HUMAN_GATE.
 """
@@ -20,6 +23,11 @@ from tpm_core.clarification import (
     parse_intent,
     to_intent,
     user_wants_to_skip,
+)
+from tpm_core.inquiry import (
+    build_inquiry_prompt,
+    parse_inquiry_answer,
+    should_inquire,
 )
 from tpm_core.llm import chat
 from tpm_core.state import (
@@ -86,7 +94,7 @@ def make_clarify_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
             intent = to_intent(intent_dict, state.clarify_history)
             intent.user_override = True
             state.intent = intent
-            state.phase = OrchestratorPhase.PLAN
+            state.phase = OrchestratorPhase.INQUIRY
             state.append_handoff(HandoffPacket(
                 stage="clarify",
                 success=True,
@@ -120,7 +128,7 @@ def make_clarify_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
             )
             if _is_yes(ans):
                 state.intent = intent
-                state.phase = OrchestratorPhase.PLAN
+                state.phase = OrchestratorPhase.INQUIRY
                 state.append_handoff(HandoffPacket(
                     stage="clarify",
                     success=True,
@@ -193,7 +201,7 @@ def _check_max_iter(state: TPMState) -> TPMState:
     if state.clarify_iterations >= state.clarify_max_iterations:
         log.warning("[clarify] hit max iterations - proceeding with low-confidence intent")
         # Build best-effort intent and proceed
-        state.phase = OrchestratorPhase.PLAN
+        state.phase = OrchestratorPhase.INQUIRY
         if state.intent is None:
             state.intent = Intent(
                 action="other",
@@ -204,6 +212,79 @@ def _check_max_iter(state: TPMState) -> TPMState:
                 history=state.clarify_history,
             )
     return state
+
+
+def make_inquiry_node(ui: UI) -> Callable[[TPMState], TPMState]:
+    """
+    Inquiry-First node (Section 8). Runs after clarify, before plan.
+    Asks the user for user-specific info before sending the query to L3 search.
+    No LLM call - decision is deterministic (pattern + intent slot based).
+    """
+
+    def node_inquiry(state: TPMState) -> TPMState:
+        intent = state.intent
+        if intent is None:
+            # Should never happen - clarify guarantees intent before INQUIRY
+            state.phase = OrchestratorPhase.PLAN
+            state.inquiry_route = "skipped"
+            state.inquiry_skip_reason = "no_intent"
+            return state
+
+        decision = should_inquire(intent, state.user_request)
+
+        if decision.skip:
+            state.inquiry_route = "skipped"
+            state.inquiry_skip_reason = decision.reason
+            state.phase = OrchestratorPhase.PLAN
+            state.append_handoff(HandoffPacket(
+                stage="inquiry",
+                success=True,
+                reasoning=f"skipped: {decision.reason}",
+                payload={"route": "skipped", "reason": decision.reason},
+            ))
+            log.info("[inquiry] skipped (%s)", decision.reason)
+            return state
+
+        # Ask the user
+        prompt = build_inquiry_prompt(intent, decision)
+        state.inquiry_question = prompt["question"]
+        ans_text = ui.ask(prompt["question"], prompt["options"])
+        state.inquiry_answer = ans_text
+
+        parsed = parse_inquiry_answer(ans_text)
+        state.inquiry_route = parsed.route
+        state.inquiry_payload = parsed.payload
+
+        # If user provided a direct answer, fold it into intent.scope so the
+        # downstream synthesizer has it. If they pointed at a location, the
+        # plan node will pick it up via state.inquiry_payload.
+        if parsed.route == "user_answered" and parsed.payload:
+            # Append as an extra scope hint without clobbering the original
+            extra = parsed.payload
+            if intent.scope and extra not in intent.scope:
+                intent.scope = f"{intent.scope} | user-provided: {extra}"
+            elif not intent.scope:
+                intent.scope = f"user-provided: {extra}"
+            state.intent = intent
+
+        state.phase = OrchestratorPhase.PLAN
+        state.append_handoff(HandoffPacket(
+            stage="inquiry",
+            success=True,
+            reasoning=f"asked user; route={parsed.route}",
+            payload={
+                "route": parsed.route,
+                "target": decision.target_phrase,
+                "answer_chars": len(parsed.payload),
+            },
+        ))
+        log.info(
+            "[inquiry] asked about %r -> route=%s payload_chars=%d",
+            decision.target_phrase, parsed.route, len(parsed.payload),
+        )
+        return state
+
+    return node_inquiry
 
 
 SYNTHESIZER_SYSTEM = """\
@@ -502,12 +583,15 @@ def build_graph(ui: UI | None = None, model: str = DEFAULT_MODEL):
     g = StateGraph(TPMState)
     g.add_node("init", node_init)
     g.add_node("clarify", make_clarify_node(ui, model))
+    g.add_node("inquiry", make_inquiry_node(ui))
     g.add_node("plan", make_plan_node(ui, model))
 
     g.set_entry_point("init")
     g.add_edge("init", "clarify")
 
     def clarify_router(state: TPMState) -> str:
+        if state.phase == OrchestratorPhase.INQUIRY:
+            return "inquiry"
         if state.phase == OrchestratorPhase.PLAN:
             return "plan"
         if state.phase == OrchestratorPhase.FAILED:
@@ -515,10 +599,22 @@ def build_graph(ui: UI | None = None, model: str = DEFAULT_MODEL):
         # Still clarifying
         return "clarify"
 
+    def inquiry_router(state: TPMState) -> str:
+        if state.phase == OrchestratorPhase.PLAN:
+            return "plan"
+        if state.phase == OrchestratorPhase.FAILED:
+            return END
+        return END  # safety fallback
+
     g.add_conditional_edges(
         "clarify",
         clarify_router,
-        {"clarify": "clarify", "plan": "plan", END: END},
+        {"clarify": "clarify", "inquiry": "inquiry", "plan": "plan", END: END},
+    )
+    g.add_conditional_edges(
+        "inquiry",
+        inquiry_router,
+        {"plan": "plan", END: END},
     )
     g.add_edge("plan", END)
     return g.compile()
