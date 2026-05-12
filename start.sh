@@ -7,6 +7,34 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# ---- Bug #7 fix: strip Avast-injected SSLKEYLOGFILE -----------
+# Avast antivirus sets SSLKEYLOGFILE to a kernel device path
+# (\\.\aswMonFltProxy\...) so it can intercept HTTPS session keys.
+# This crashes uv-bundled Python's _ssl.pyd in ssl.create_default_context
+# (no OPENSSL_Applink in the bundled libcrypto). Strip it here for the
+# duration of this shell + all child processes.
+unset SSLKEYLOGFILE
+
+# ---- (sitecustomize.py also covers direct python invocation) ---
+# Re-create venv/Lib/site-packages/sitecustomize.py if missing so the
+# fix applies to `python script.py` outside this wrapper too.
+SITECUSTOM=".venv/Lib/site-packages/sitecustomize.py"
+if [[ -d ".venv/Lib/site-packages" && ! -f "$SITECUSTOM" ]]; then
+    cat > "$SITECUSTOM" <<'EOF'
+import sys
+from pathlib import Path
+_repo = Path(__file__).resolve().parents[3]
+if str(_repo) not in sys.path:
+    sys.path.insert(0, str(_repo))
+try:
+    import tpm_core._envfix  # noqa: F401
+except ImportError:
+    import os
+    os.environ.pop("SSLKEYLOGFILE", None)
+EOF
+    echo "[ok] regenerated $SITECUSTOM (Bug #7 fix)"
+fi
+
 echo "============================================================"
 echo "TPM AI — startup ($(date -Iseconds))"
 echo "============================================================"

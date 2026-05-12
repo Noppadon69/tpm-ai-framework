@@ -5,6 +5,31 @@ REM ref: MASTER_PLAN_v5.md Section 22.2
 setlocal enableextensions
 cd /d "%~dp0"
 
+REM ---- Bug #7 fix: strip Avast-injected SSLKEYLOGFILE ----
+REM Avast antivirus sets SSLKEYLOGFILE to a kernel device path so it can
+REM intercept HTTPS session keys; this crashes uv-bundled Python's _ssl.pyd
+REM in ssl.create_default_context (no OPENSSL_Applink). Strip per-shell.
+set "SSLKEYLOGFILE="
+
+REM ---- Regenerate sitecustomize.py if missing (Bug #7 fix) ----
+if exist ".venv\Lib\site-packages" (
+    if not exist ".venv\Lib\site-packages\sitecustomize.py" (
+        > ".venv\Lib\site-packages\sitecustomize.py" (
+            echo import sys
+            echo from pathlib import Path
+            echo _repo = Path^(__file__^).resolve^(^).parents[3]
+            echo if str^(_repo^) not in sys.path:
+            echo     sys.path.insert^(0, str^(_repo^)^)
+            echo try:
+            echo     import tpm_core._envfix  # noqa: F401
+            echo except ImportError:
+            echo     import os
+            echo     os.environ.pop^("SSLKEYLOGFILE", None^)
+        )
+        echo [ok] regenerated sitecustomize.py ^(Bug #7 fix^)
+    )
+)
+
 echo ============================================================
 echo TPM AI - startup
 echo ============================================================
