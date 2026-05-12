@@ -53,9 +53,10 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - ✅ Phase 1 Day 4: L3 search stack (SearXNG + Tavily + Exa + DDG + Wikipedia + Jina)
 - ⏸️ Phase 1 Day 1-3: markitdown+llama-index wiki + ChromaDB cache (waits for real docs Day 1 of Toshiba internship)
 - ✅ Phase 2 Day 1-2: orchestrator + Clarification Loop + auto-persist
-- ⏸️ Phase 2 Day 3: Inquiry-First (§ 8) — not yet
+- ✅ Phase 2 Day 3: Inquiry-First (§ 8) — DONE 2026-05-12 (commit abf6409) — deterministic pattern + skip rules; 52 unit/integration tests PASS
 - ✅ Phase 3 Day 1: Report + Excel workers (output .docx + .xlsx)
-- ⏸️ Phase 3 Day 2/3/4/5: Vision / Calc / Auditor 8-layer / Tool Registry
+- ✅ Phase 3 Day 3: Calc worker (SymPy + Pint, 8-formula library + ad-hoc) — DONE 2026-05-12 (commit f41ace6), 31 unit assertions PASS
+- ⏸️ Phase 3 Day 2/4/5: Vision / Auditor 8-layer / Tool Registry
 - ✅ Phase 4 Day 1: Chainlit UI
 - ✅ Phase 4 Day 2: Activity Tracker (manual JSONL logger + weekly slide integration, 2026-05-08; Tier 3 OS-tracking deferred)
 - ✅ Phase 4 Day 3: Night Cycle (+ G-04 sleep-prevention patch applied 2026-05-09)
