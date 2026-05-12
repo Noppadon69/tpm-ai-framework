@@ -9,6 +9,7 @@ Submodules:
   materials      - material -> hardness, yield strength, application
   process_spec   - typical process-parameter ranges (injection / press)
 """
+from tpm_mold.analyse import MoldDiagnosis, ParamDeviation, analyse
 from tpm_mold.defect_catalog import (
     DEFECT_CATALOG,
     InjectionDefect,
@@ -32,4 +33,7 @@ __all__ = [
     "PROCESS_SPECS",
     "ParamSpec",
     "check_param",
+    "MoldDiagnosis",
+    "ParamDeviation",
+    "analyse",
 ]

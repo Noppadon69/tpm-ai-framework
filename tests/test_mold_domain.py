@@ -31,6 +31,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 from tpm_mold import (  # noqa: E402
     InjectionDefect,
     PressDefect,
+    analyse,
     causes_for,
     check_param,
     life_rules_for,
@@ -194,6 +195,70 @@ def t_calc_e2e_cooling():
 
 
 # ============================================================
+# MoldAnalyseNode
+# ============================================================
+def t_analyse_basic():
+    diag = analyse("Flash")
+    check("analyse: defect captured", diag.defect == "Flash")
+    check("analyse: causes loaded", len(diag.causes) == 4)
+    check("analyse: ranked = causes (no deviations)",
+          len(diag.ranked_candidates) == 4)
+    check("analyse: no deviations", diag.deviations == [])
+
+
+def t_analyse_with_deviation():
+    diag = analyse(
+        "Sink mark",
+        process_log={"holding_pressure": 20, "barrel_temperature": 220},
+    )
+    check("analyse: holding_pressure low detected",
+          any(d.param == "holding_pressure" and d.direction == "low"
+              for d in diag.deviations))
+    check("analyse: barrel_temperature in range (no deviation)",
+          not any(d.param == "barrel_temperature" for d in diag.deviations))
+    # Top cause should mention holding_pressure (boosted)
+    top = diag.ranked_candidates[0]
+    check("analyse: deviation-aware rank top = holding_pressure cause",
+          "holding_pressure" in top.check_via,
+          detail=f"top check_via={top.check_via}")
+
+
+def t_analyse_overhaul():
+    diag = analyse(
+        "Flash",
+        mold_material="SKD61",
+        shot_count=500_000,
+    )
+    check("analyse: overhaul_due detected", diag.overhaul_due)
+    # tool_wear cause should get a boost when overhaul is due
+    top_categories = [c.category for c in diag.ranked_candidates[:2]]
+    check("analyse: overhaul -> tool_wear in top 2",
+          "tool_wear" in top_categories,
+          detail=f"top2 categories={top_categories}")
+
+
+def t_analyse_unknown_defect():
+    diag = analyse("alien_defect")
+    check("analyse: unknown defect -> empty ranked",
+          diag.ranked_candidates == [])
+    check("analyse: warning emitted", len(diag.warnings) >= 1)
+
+
+def t_analyse_summary_format():
+    diag = analyse(
+        "Sink mark",
+        process_log={"holding_pressure": 20},
+        mold_material="P20",
+        shot_count=25_000,
+    )
+    summary = diag.summary()
+    check("summary: mentions defect", "Sink mark" in summary)
+    check("summary: mentions deviation", "holding_pressure" in summary)
+    check("summary: mentions Next PM", "Next PM in" in summary)
+    check("summary: ranked candidates present", "Ranked candidates" in summary)
+
+
+# ============================================================
 # Run
 # ============================================================
 def main() -> int:
@@ -205,6 +270,11 @@ def main() -> int:
         t_calc_cooling_time,
         t_calc_projected_area,
         t_calc_e2e_cooling,
+        t_analyse_basic,
+        t_analyse_with_deviation,
+        t_analyse_overhaul,
+        t_analyse_unknown_defect,
+        t_analyse_summary_format,
     ):
         print(f"\n--- {fn.__name__} ---")
         fn()
