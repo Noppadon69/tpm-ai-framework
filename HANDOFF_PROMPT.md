@@ -76,6 +76,10 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 7. Automated tests: `python tests/test_orchestrator_flow.py --fast` (4 scenarios, ~220s, 4/4 PASS verified 2026-05-08)
 8. Activity logging: `python scripts/log_activity.py --interactive` (or --duration N --category X --subject "...") — out-of-AI work logged to .tpm_context/activity_log/outside_ai/<date>.jsonl
 9. Soak testing: `python scripts/test_battery.py --tag <name>` — 10-prompt MockUI battery, persists sessions for night cycle replay
+10. **Defect lookup (Toshiba intern daily helper):** `python scripts/lookup_defect.py "Flash"` → catalog causes. Add `--param holding_pressure=20 --material P20 --shot-count 25000` for deviation-aware ranked diagnosis. Run `--list` to see supported defects + materials.
+11. **Calc worker:** `intent.action=calc` routes to SymPy+Pint pipeline (10 curated formulas: stress, pressure, clamping_force, shot_weight, cooling_time, projected_area, etc.) or ad-hoc expression via `extras["formula"]`. Writes `output/calc/<sid>.md` audit trail.
+12. **Inquiry-First (Section 8):** orchestrator now asks user about user-specific subjects (MAKINO/SHIBAURA tags, "ของเรา", machine codes) before falling through to L3. Skip rules: emergency, night_cycle, is_definition/is_standard_reference.
+13. **Auditor (7 of 8 layers):** every Worker output runs through schema + cove_numbers + quality + format + safety + confidence + egress. Same module exposes `Auditor.judge(text, ctx)` for future Reflexion N-round (§ 15.7) self-judge tier.
 
 ## v6.0 changes vs v5.0 (patched 2026-05-09 — read before touching these areas)
 | Area | v5.0 | v6.0 (now) |
@@ -247,9 +251,10 @@ D:\tpm_workspace\
 ├── requirements.txt              ← v6.0: llama-index added, mem0 removed, bounds fixed
 ├── .env.example                  ← TAVILY_API_KEY, EXA_API_KEY, TPM_ORCHESTRATOR_MODEL
 │
-├── tpm_core/                     ← orchestrator + state + LLM wrapper + clarification
+├── tpm_core/                     ← orchestrator + state + LLM wrapper + clarification + inquiry (§ 8)
 ├── tpm_search/                   ← L3 search stack (6 providers + egress + router + quota)
-├── tpm_workers/                  ← Report + Excel workers
+├── tpm_workers/                  ← Report + Excel + Calc + Auditor (7-of-8 layers) workers
+├── tpm_mold/                     ← Mold & Die domain (§ 25): defect catalog, mold_life, materials, process_spec, MoldAnalyseNode
 ├── tpm_night/                    ← session_store + replay + budget_audit + morning_brief
 ├── tpm_progress/                 ← weekly_progress.pptx generator
 ├── tpm_activity/                 ← manual activity log (JSONL, Tier 1+2 only)
@@ -265,11 +270,17 @@ D:\tpm_workspace\
 │   ├── setup_models.py           ← creates tpm-orch + tpm-scavenger
 │   ├── benchmark_llm.py
 │   ├── weekly_progress.py
+│   ├── lookup_defect.py          ← [NEW 2026-05-12] Mold defect lookup CLI (§ 25)
 │   ├── generate_dummy_data.py    ← 4 Japanese machines (SHIBAURA×2, MAKINO, SODICK)
 │   └── CRON_SETUP.md
 │
 ├── tests/
-│   └── test_orchestrator_flow.py ← MockUI + 6 scenarios (no human in loop)
+│   ├── test_orchestrator_flow.py ← MockUI + 6 scenarios (no human in loop; blocked when Bug #7 active)
+│   ├── test_inquiry.py           ← [NEW] Inquiry-First unit tests (33 assertions, no SSL needed)
+│   ├── test_inquiry_node.py      ← [NEW] Inquiry node integration (19 assertions)
+│   ├── test_calc_worker.py       ← [NEW] Calc worker (31 assertions)
+│   ├── test_auditor.py           ← [NEW] Auditor 7-of-8 layers + judge (27 assertions)
+│   └── test_mold_domain.py       ← [NEW] tpm_mold + MoldAnalyseNode (43 assertions)
 │
 ├── models/
 │   ├── orchestrator/Modelfile    ← Qwen3-8B + 8K ctx
@@ -319,19 +330,38 @@ python scripts\health_check.py
 python scripts\cli_demo.py "what is FMEA"
 # คาด: phase=done + Thai answer with Wikipedia citation
 
-# 3. Automated tests
+# 3. Automated tests (LLM-dependent, may block on Bug #7)
 python tests\test_orchestrator_flow.py --fast
 # คาด: 4/4 PASS in ~220s
+
+# 4. Offline tests (no LLM, no SSL - safe under Bug #7)
+python tests\test_inquiry.py
+python tests\test_inquiry_node.py
+python tests\test_calc_worker.py
+python tests\test_auditor.py
+python tests\test_mold_domain.py
+# คาด: each suite "all tests passed" (~150 total assertions)
+
+# 5. Toshiba intern daily helper
+python scripts\lookup_defect.py "Flash"
+python scripts\lookup_defect.py "Sink mark" --param holding_pressure=20 --material P20 --shot-count 25000
 ```
 
-ถ้า 3 อันนี้ผ่าน → ระบบพร้อมทำงาน ไม่ regress
+ถ้า 3 + 4 ผ่าน → ระบบพร้อมทำงาน ไม่ regress
 
 ---
 
-**Generated:** 2026-05-10 (after GitHub push + security gitignore + spec session complete)
-**Project state:** ~52% by plan / ~80% functional (no phase progress this session — focus was meta: backup + spec drafts)
+**Generated:** 2026-05-12 (Phase 2 Day 3 + Phase 3 Day 3 + Phase 3 Day 4 + Section 25 MVP all shipped)
+**Project state:** ~70% by plan / ~90% functional (4 features shipped this session; only Phase 3 Day 2 Vision + Phase 3 Day 5 Tool Registry remain in Phase 3)
 **Plan version:** MASTER_PLAN_v6.md (26 top-level sections; § 15 expanded with 15.7 + 15.8 + 15.9 v6.1 spec drafts)
-**Last session highlights (2026-05-10):**
+**Last session highlights (2026-05-12, autonomous run):**
+- ✅ Phase 2 Day 3 **Inquiry-First** (commit abf6409) — deterministic pattern + skip rules + question/answer flow; INQUIRY phase wired between CLARIFY and PLAN; 52 unit/integration tests PASS
+- ✅ Phase 3 Day 3 **Calc worker** (commit f41ace6) — SymPy + Pint; FORMULA_LIBRARY of 10 (stress, pressure, clamping_force, shot_weight, ohms_law, power_dc, strain, ratio, cooling_time_thumb, projected_area_clamp); ad-hoc expression path; audit .md trail; 31 assertions PASS
+- ✅ Phase 3 Day 4 **Auditor 8-layer** + Reflexion judge backend (commit 633e368) — 7 of 8 layers (schema/cove_numbers/quality/format/safety/confidence/egress; Phoenix deferred); negation-aware hazard scan; `Auditor.judge()` exposes self_judge tier for future § 15.7; wired into Report + Calc workers; 27 assertions PASS
+- ✅ Section 25 **Mold & Die domain MVP** (commits 8d6df9f + 26eabc0) — `tpm_mold/` package: defect_catalog (10 defects + Thai aliases), mold_life (5 steels), materials (8 items inc. PP/ABS/PC), process_spec (10 params); MoldAnalyseNode (deterministic, deviation-aware ranking, overhaul-bumps-tool_wear); `scripts/lookup_defect.py` CLI helper for intern's Day-1 use; 43 assertions PASS
+- ⚠️ Bug #7 (OPENSSL_Uplink) recurred this session — orchestrator e2e tests not re-verified (offline tests cover new logic instead). Permanent fix = Python reinstall (still deferred per user "ถ้าเกิดขึ้นอีกค่อยแก้")
+- Total: 6 feature commits + 1 doc; 5 new test files; ~150 assertions all PASS
+**Previous session 2026-05-10:**
 - ✅ GitHub push complete — both repos backed up (no longer single-point-of-failure on local disk)
   - PUBLIC: https://github.com/Noppadon69/tpm-ai-framework (12 commits)
   - PRIVATE: https://github.com/Noppadon69/tpm-knowledge-private (9 commits)
@@ -345,5 +375,9 @@ python tests\test_orchestrator_flow.py --fast
 - ⚠️ test_orchestrator_flow --fast NOT verified (blocked by Bug #7 recurrence) — reboot needed to unblock; gap patches presumed OK from health_check signal
 - ⚠️ cryptography downgraded 47.0.0 → 45.0.7 in venv (~harmless cleanup; did NOT fix Bug #7)
 - ⚠️ Security incident: user pasted PAT in chat → revoked + regenerated; lesson committed to gotchas list
-**Recommended next:** B (Phase 2 Day 3 Inquiry-First, ~30K) → C (Phase 3 Day 3 Calc, ~50K) → D (Phase 3 Day 4 Auditor — re-scoped to BE judge for § 15.7)
+**Recommended next:**
+- **E (Phase 3 Day 5 Tool Registry + MCP)** — last item in Phase 3; lets workers be swapped at runtime. Foundational for adding Vision (Day 2) cleanly later
+- **§ 15.7 Reflexion N-round implementation** — judge backend already built (D); spec exists at § 15.7.7 (~15 hr); BUT spec itself says defer rollout until real Phase 1 Day 1 data exists (Toshiba internship Day 1) — so design-only or DEFER
+- **Phase 3 Day 2 Vision worker** — needs Qwen2.5-VL-3B; bigger lift; gated on real-data scenarios
+- **Bug #7 permanent fix** — Python reinstall when next recurrence is painful enough
 **Conditional next (if Bug #7 recurs):** Phase 0.5 Python reinstall — agreed with user 2026-05-10 to defer permanent fix until next recurrence
