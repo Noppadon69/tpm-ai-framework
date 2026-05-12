@@ -171,6 +171,33 @@ FORMULA_LIBRARY: dict[str, Formula] = {
         keywords_th=("อัตราส่วน", "อัตรา"),
         keywords_en=("ratio",),
     ),
+    # ---- Mold & Die (Section 25) ----
+    "cooling_time_thumb": _f(
+        id="cooling_time_thumb",
+        name_th="เวลาเย็นตัว (rule of thumb)",
+        name_en="Cooling Time (rule of thumb)",
+        expression="2 * t**2",   # t in mm -> seconds, factor 2-3 typical
+        variables=("t",),
+        output_symbol="t_cool",
+        output_unit="second",
+        description="Approx cooling time = 2 * (wall thickness mm)^2 (s)",
+        keywords_th=("เวลาเย็น", "cooling time", "เย็นตัว"),
+        keywords_en=("cooling time",),
+        var_units={"t": "millimeter"},
+    ),
+    "projected_area_clamp": _f(
+        id="projected_area_clamp",
+        name_th="พื้นที่ฉาย (สำหรับแรงล็อก)",
+        name_en="Required Projected Area for Clamp Force",
+        expression="F / P",
+        variables=("F", "P"),
+        output_symbol="A_proj",
+        output_unit="meter**2",
+        description="Projected area needed = clamp force / cavity pressure",
+        keywords_th=("พื้นที่ฉาย", "projected area"),
+        keywords_en=("projected area",),
+        var_units={"F": "newton", "P": "pascal"},
+    ),
 }
 
 

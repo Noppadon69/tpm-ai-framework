@@ -56,7 +56,9 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - ✅ Phase 2 Day 3: Inquiry-First (§ 8) — DONE 2026-05-12 (commit abf6409) — deterministic pattern + skip rules; 52 unit/integration tests PASS
 - ✅ Phase 3 Day 1: Report + Excel workers (output .docx + .xlsx)
 - ✅ Phase 3 Day 3: Calc worker (SymPy + Pint, 8-formula library + ad-hoc) — DONE 2026-05-12 (commit f41ace6), 31 unit assertions PASS
-- ⏸️ Phase 3 Day 2/4/5: Vision / Auditor 8-layer / Tool Registry
+- ✅ Phase 3 Day 4: Auditor 7-of-8 layers + Reflexion judge backend — DONE 2026-05-12 (commit 633e368), 27 unit assertions PASS. Phoenix semantic eval (layer 6) deferred until Arize wired.
+- ✅ Section 25 Mold & Die domain MVP — DONE 2026-05-12 — `tpm_mold/` package: defect catalog (10 defects with ranked causes, Thai aliases), mold_life (SKD11/SKD61/P20/NAK80/S50C PM intervals + overhaul), materials DB (8 materials), process_spec (10 params with typical ranges). +2 mold formulas (cooling_time_thumb, projected_area_clamp). 31 assertions PASS.
+- ⏸️ Phase 3 Day 2/5: Vision / Tool Registry
 - ✅ Phase 4 Day 1: Chainlit UI
 - ✅ Phase 4 Day 2: Activity Tracker (manual JSONL logger + weekly slide integration, 2026-05-08; Tier 3 OS-tracking deferred)
 - ✅ Phase 4 Day 3: Night Cycle (+ G-04 sleep-prevention patch applied 2026-05-09)
