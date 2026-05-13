@@ -22,6 +22,7 @@ class WorkerType(str, Enum):
     PPTX = "pptx"
     VISION = "vision"
     CALC = "calc"
+    VIBRATION = "vibration"
 
 
 class WorkerStep(BaseModel):
