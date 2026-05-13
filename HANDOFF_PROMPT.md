@@ -212,8 +212,11 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - ~~L) Wire Reflexion into morning brief~~ ✅ DONE 2026-05-13 (commit 488f44a)
 - ~~M) Update § 15.1 schedule~~ ✅ DONE 2026-05-13 (commit 6a1341b)
 - **J) Multi-night Night Cycle soak** — let `scripts/night_cycle.py` run unattended 3-5 nights, inspect morning briefs for drift. Single-run smoke clean 2026-05-13 (1 session, 0 diffs). Best run: schedule via Task Scheduler at 22:00 nightly.
-- **N) Drop Thai OCR data** (optional) — `tha.traineddata` from tessdata_fast → `C:\Program Files\Tesseract-OCR\tessdata\`. Worker auto-uses it when present.
+- ~~N) Drop Thai OCR data~~ ✅ **DONE 2026-05-13 (autonomous continuation, commit afe8482)** — `tha.traineddata` (1.07 MB tessdata_fast variant) pre-staged at `D:/tpm_workspace/models/tesseract_lang/`. `tpm_workers/vision.py::_run_ocr()` now reads `TESSERACT_TESSDATA_DIR` env var and passes `--tessdata-dir` to tesseract, so the file works WITHOUT needing admin write to `C:\Program Files\Tesseract-OCR\tessdata\`. Default behavior unchanged when env var unset.
 - **O) When at Toshiba Day 1:** `python scripts/ingest_doc.py --dir <real_docs>` + `python scripts/log_pm.py <mold> register --material <steel>` + `python scripts/analyze_image.py <defect_photo>`. Everything is wired; no code changes needed for the golden path.
+- **NEW (post-2026-05-13 spare-time work)** — washing-machine ME demos ready for Day-1 conversations:
+  - `python scripts/demo_drivetrain.py` → 3-mass torsional model (openTorsion) → modal + FRF PNG
+  - `python scripts/demo_vibration.py` → synthetic accel trace (endaq + scipy) → bearing fault diagnosis PNG
 
 When internship starts (Day 1):
 - Ingest real Toshiba PDFs via `scripts/ingest_doc.py --dir <real_data_path>`
@@ -408,6 +411,19 @@ python scripts\ingest_doc.py --search "lockout tagout"
 - ✅ **D — § 15.7 Reflexion skeleton** (commit 4500889). `tpm_reflexion/`: N-round attempt→judge→reflect loop with patience-based early stop. `make_auditor_judge()` wraps existing `Auditor.judge()` as backend (realises 2026-05-10 re-scope). `format_outcome_for_brief()` ready for Night Cycle morning-brief embedding. `auto_apply_to_prompts=False` per Section 15.7 Phase 1 spec. 20 assertions PASS.
 - ✅ **G — Docs polish** (this commit) — HANDOFF refreshed, 10 test suites verified all green (182 / 0 fail).
 - All 10 test suites green at end of session: 182 / 0 fail (inquiry 34, inquiry_node 23, calc 36, pm_log 20, knowledge 14, vision 18, registry 17, reflexion 20).
+
+**Autonomous continuation, session 2026-05-13 (later same day):**
+- ✅ **n8n service scaffold** (commit 5b2e08c) — `services/n8n/docker-compose.yml` + README. Telegram bot lane without writing Python handlers; activation = `docker compose up -d` + BotFather token in n8n UI. Decision gate documented: if < 3 workflows after 1 month, swap to `python-telegram-bot` + `apscheduler`.
+- ✅ **Langfuse + Phoenix scaffolds finalised** (commit 7250791) — both already in plan § 17.2 H; service dirs had been empty. Added docker-compose + activation guide for each. Activation deferred per existing plan (no real traces yet).
+- ✅ **ADOPT tools pre-installed** (commit 226fca1) — endaq 1.5.3 + opentorsion 0.3.2 pinned in `requirements.txt`. edocr2 0.0.1 skeleton via `pip install --no-deps -e D:/tpm_workspace/external/edocr2-main/`. Heavy edocr2 deps (~2 GB tf-keras/sentence-transformers/poppler) deferred until Day-1. `external/` added to `.gitignore`. Two Windows gotchas documented in requirements.txt: NTFS-incompatible ADS files in edocr2 repo (use tarball + `--exclude`) + poppler binary requirement for pdf2image.
+- ✅ **demo_drivetrain.py** (commit 9fb8aa6) — 3-mass torsional model (motor / coupling / drum) via openTorsion. Default parameters yield mode 1 ~36 Hz + mode 2 ~206 Hz; no resonance within +/-10% of wash/distribute/spin bands. Produces `output/demo/drivetrain_{modal,frf}.png`.
+- ✅ **demo_vibration.py** (commit dcdbdc3) — synthetic accelerometer trace with embedded 6204 outer-race bearing fault. Hilbert-envelope spectrum extracts BPFO = 73.20 Hz vs theoretical 73.25 Hz (0.07% error); automatic verdict flags outer-race defect. Touches `endaq.calc.fft.aggregate_fft` for raw spectrum. Produces `output/demo/vibration_{raw,spectrum}.png`.
+- ✅ **TESSERACT_TESSDATA_DIR env var** (commit afe8482) — `_run_ocr()` now respects custom tessdata dir; pre-staged `tha.traineddata` at `D:/tpm_workspace/models/tesseract_lang/`. Closes item N without admin elevation.
+- ✅ **Sanity** — health_check from main checkout: 9 OK / 1 WARN / 0 FAIL (warn = `ollama_env` flash-attention not set in this shell). All 10 offline test suites PASS (~280 assertions, 0 fail). `test_orchestrator_flow.py --fast` PASS 4/4 in 259s — Bug #7 fix holds in real LLM path.
+- ⏸️ **GitHub push** — these 5 worktree commits + 3 private-repo watchlist deltas not yet pushed. Branch `claude/affectionate-hopper-62e5ac` ahead of origin/main by 7 commits.
+
+**Verdict matrix on 2026-05-13 OSS batch (full notes in `.tpm_context/tool_watchlist.md`):**
+ADOPT: n8n, edocr2, endaq, opentorsion. STANDBY tool-ready: openInjMoldSim, SAM2-UNet. A/B: Florence-2, vector-graph-rag. WATCH: MS agent-governance-toolkit. SKIP: Dify, smolagents. DEFER (low signal): vectorize-io/hindsight, Nomadu27/InsAIts-public. Already-cataloged: ultralytics, FreeCAD, CalculiX.
 
 **Previous session highlights (2026-05-12, autonomous run):**
 - ✅ Phase 2 Day 3 **Inquiry-First** (commit abf6409) — deterministic pattern + skip rules + question/answer flow; INQUIRY phase wired between CLARIFY and PLAN; 52 unit/integration tests PASS

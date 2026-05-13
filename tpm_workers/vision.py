@@ -108,11 +108,18 @@ def _run_ocr(image_path: Path) -> tuple[str, str]:
 
     try:
         img = Image.open(image_path)
+        # User-writable tessdata dir (e.g. models/tesseract_lang/ holding
+        # tha.traineddata). Skips the admin-write requirement of the default
+        # tessdata under "C:\Program Files\Tesseract-OCR\tessdata\".
+        tess_cfg = ""
+        custom_tessdata = os.environ.get("TESSERACT_TESSDATA_DIR")
+        if custom_tessdata and Path(custom_tessdata).is_dir():
+            tess_cfg = f'--tessdata-dir "{custom_tessdata}"'
         # Try Thai + English; falls back to English if Thai data not installed
         try:
-            text = pytesseract.image_to_string(img, lang="tha+eng")
+            text = pytesseract.image_to_string(img, lang="tha+eng", config=tess_cfg)
         except pytesseract.TesseractError:
-            text = pytesseract.image_to_string(img, lang="eng")
+            text = pytesseract.image_to_string(img, lang="eng", config=tess_cfg)
         return text.strip(), "tesseract"
     except Exception as e:  # noqa: BLE001
         return "", f"failed: {type(e).__name__}: {e}"

@@ -88,6 +88,23 @@ matplotlib>=3.9       # PM dashboard (Section 25.2.5)
 pytesseract>=0.3.10   # OCR side-channel for Vision worker (needs tesseract binary)
 
 # ============================================================
+# Mechanical-engineering domain libraries (2026-05-13 batch)
+# washing-machine drive-train + bearing PdM at Toshiba
+# ============================================================
+endaq>=1.5             # vibration / shock / accelerometer time-series (Mide, MIT)
+opentorsion>=0.3       # torsional vibration analysis, shaft modal (Aalto, MIT)
+# edocr2 — engineering-drawing OCR (Javier Villena Toro, MIT).
+#   Not on PyPI; pinned at git source. Install:
+#     pip install --no-deps -e D:/tpm_workspace/external/edocr2-main
+#   Day-1 step (when first real drawing PDF arrives):
+#     pip install -r D:/tpm_workspace/external/edocr2-main/requirements.txt
+#   Heavy deps (~2 GB): pdf2image (needs poppler binary), opencv,
+#   tf-keras, efficientnet, sentence-transformers, accelerate.
+#   Repo-fetch gotcha (Windows): repo contains NTFS-incompatible
+#   ADS files (tests/*.PDF:Zone.Identifier). Use tarball extract with
+#   --exclude="*Zone.Identifier*" instead of git clone. See HANDOFF.
+
+# ============================================================
 # System monitoring
 # ============================================================
 psutil>=6.0

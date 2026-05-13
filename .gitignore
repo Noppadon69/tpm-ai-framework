@@ -12,6 +12,7 @@ models/**/*.gguf
 models/**/*.bin
 models/**/*.safetensors
 models/**/*.onnx
+models/**/*.traineddata
 models/**/blobs/
 models/**/manifests/
 *.gguf
@@ -30,6 +31,13 @@ raw_data/
 # (.tpm_context/.git → tpm-knowledge-private repo)
 # ------------------------------------------------------------
 .tpm_context/
+
+# ------------------------------------------------------------
+# External OSS source trees (git+pip editable installs that can't
+# live in .venv — e.g. repos with Windows-NTFS-incompatible files
+# like edocr2's tests/*.PDF:Zone.Identifier ADS markers)
+# ------------------------------------------------------------
+external/
 
 # ------------------------------------------------------------
 # Caches
