@@ -206,6 +206,46 @@ def main() -> int:
                     "exception": str(e),
                 })
 
+    # ---- 4.5. Reflexion on replay discrepancies (Section 15.7 Phase 1) ----
+    # For each replay that produced errors, run a synthetic Reflexion loop
+    # so the morning brief carries failure-mode notes + proposed fixes.
+    # auto_apply_to_prompts is False per spec - brief-only output.
+    reflexion_outcomes: list = []
+    try:
+        from tpm_reflexion import ReflexionConfig, run_reflexion
+        from tpm_reflexion.reflexion import default_reflect
+        for r in replay_results:
+            diffs = r.get("discrepancies") or []
+            errors = [d for d in diffs if getattr(d, "severity", "") == "error"]
+            if not errors:
+                continue
+            err_notes = [f"{d.field}: {d.original} -> {d.replay}" for d in errors]
+            # Synthetic attempt_fn replays the same request text; judge_fn
+            # reports confidence inversely proportional to error count.
+            base_conf = max(0.0, 0.9 - 0.15 * len(errors))
+
+            def _att(memory, _req=r.get("user_request", "")):
+                return _req
+
+            def _jud(txt, ctx, _notes=err_notes, _conf=base_conf):
+                return _conf, _notes
+
+            outcome = run_reflexion(
+                attempt_fn=_att, judge_fn=_jud, reflect_fn=default_reflect,
+                task_context={"session_id": r.get("session_id", "?")},
+                config=ReflexionConfig(max_rounds=2, success_threshold=0.85, patience=10),
+            )
+            # Attach a label for the brief renderer
+            outcome._label = (r.get("session_id", "?")[:8]
+                              + " " + (r.get("user_request") or "")[:40])
+            reflexion_outcomes.append(outcome)
+        if reflexion_outcomes:
+            print(f"[reflexion] generated {len(reflexion_outcomes)} outcome(s) for the brief")
+    except ImportError:
+        log.info("[reflexion] tpm_reflexion not installed - skipping")
+    except Exception as e:  # noqa: BLE001
+        log.warning("[reflexion] outcome generation failed: %s", e)
+
     # ---- 5. Render brief ----
     print("[brief] rendering markdown...")
     brief = render_brief(
@@ -215,6 +255,7 @@ def main() -> int:
         prompt_findings=prompt_findings,
         replay_results=replay_results,
         quota_snapshot=quota_status(),
+        reflexion_outcomes=reflexion_outcomes,
     )
     path = write_brief(args.date, brief)
     print(f"[brief] saved -> {path}")

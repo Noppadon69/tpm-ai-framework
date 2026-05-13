@@ -37,6 +37,7 @@ def render_brief(
     prompt_findings: list[PromptFinding],
     replay_results: list[dict[str, Any]],
     quota_snapshot: Optional[dict[str, Any]] = None,
+    reflexion_outcomes: Optional[list[Any]] = None,
 ) -> str:
     """Returns a single Markdown string."""
     out: list[str] = []
@@ -122,6 +123,22 @@ def render_brief(
             out.append(f"- `{r['request_prefix']!r}` failed **{r['count']}** times")
             out.append(f"    > {r['suggestion']}")
     out.append("")
+
+    # ---- Section 4.5: Reflexion outcomes (Section 15.7 Phase 1 = brief only) ----
+    if reflexion_outcomes:
+        try:
+            from tpm_reflexion.reflexion import format_outcome_for_brief
+            out.append("## 🔁 Reflexion outcomes")
+            out.append("")
+            for i, outcome in enumerate(reflexion_outcomes, 1):
+                # Each outcome is a ReflexionOutcome; format_outcome_for_brief
+                # already produces a complete markdown block per outcome.
+                label = getattr(outcome, "_label", f"task-{i}")
+                out.append(format_outcome_for_brief(outcome, task_label=str(label)))
+                out.append("")
+        except ImportError:
+            # tpm_reflexion not installed - silently skip (not a hard dep)
+            pass
 
     # ---- Section 5: Auditor findings ----
     if runtime_stats.auditor_findings:
