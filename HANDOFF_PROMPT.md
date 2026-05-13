@@ -10,7 +10,7 @@ You are continuing work on the TPM AI Assistant project. Read the context below 
 
 ## Project identity
 - Name: TPM AI (Total Productive Maintenance assistant)
-- Repo (main): `D:\tpm_workspace` → https://github.com/Noppadon69/tpm-ai-framework (PUBLIC, pushed 2026-05-10)
+- Repo (main): `D:\tpm_workspace` → https://github.com/Noppadon69/tpm-ai-framework (PUBLIC, last pushed 2026-05-13)
 - Repo (private knowledge): `D:\tpm_workspace\.tpm_context` → https://github.com/Noppadon69/tpm-knowledge-private (PRIVATE — CONFIDENTIAL data, separate git repo)
 - OS: Windows 11 + WSL2 + Git Bash + PowerShell available
 - Maintainer: TPM intern — 4th-year Mechanical Engineering student (GitHub: Noppadon69)
@@ -48,14 +48,14 @@ Night Cycle:    scripts/night_cycle.py — replay + drift + morning brief (+ Win
 Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 ```
 
-## Where we are (~88% by plan / ~92% functional — big jump in session 2026-05-13)
+## Where we are (~92% by plan / ~95% functional — Vision now operational e2e, not just scaffold)
 - ✅ Phase 0: workspace + safety nets + git repos + Docker verified
 - ✅ Phase 1 Day 4: L3 search stack (SearXNG + Tavily + Exa + DDG + Wikipedia + Jina)
 - ✅ Phase 1 Day 1-3: markitdown + llama-index + ChromaDB ingest pipeline — **DONE 2026-05-13** (commit 917ae9f). Smoke verified against `raw_data/_dummy/`; calibration on real Toshiba PDFs is Day 1 of internship work.
 - ✅ Phase 2 Day 1-2: orchestrator + Clarification Loop + auto-persist
 - ✅ Phase 2 Day 3: Inquiry-First (§ 8) — DONE 2026-05-12 (commit abf6409) — deterministic pattern + skip rules; 52 unit/integration tests PASS
 - ✅ Phase 3 Day 1: Report + Excel workers (output .docx + .xlsx)
-- ✅ Phase 3 Day 2: Vision worker scaffold (Qwen2.5-VL-3B + Tesseract) — **DONE 2026-05-13** (commit baa15d4). Mock-tested 18 assertions PASS. Needs `ollama pull qwen2.5-vl:3b` + tesseract binary for real photos; calibration waits for Day 1 defect images.
+- ✅ Phase 3 Day 2: Vision worker (Qwen2.5-VL-3B + Tesseract) — **OPERATIONAL 2026-05-13** (commits baa15d4 + 62d574e). Mock tests 18 assertions PASS; real e2e verified on synthetic gauge image (OCR'd `TEMP: 245 C` + `WARNING: APPROACHING LIMIT`, VLM identified 4 objects at conf=0.90). **Qwen2.5VL-3B pulled** (3.2 GB at `qwen2.5vl:3b` — NO dash). **Tesseract 5.5.0 installed** at `C:\Program Files\Tesseract-OCR\`. Thai OCR data not yet installed (eng+osd only); worker falls back to English automatically.
 - ✅ Phase 3 Day 3: Calc worker (SymPy + Pint, 8-formula library + ad-hoc) — DONE 2026-05-12 (commit f41ace6), 36 assertions PASS (2 added in session 2026-05-13 for scope-hallucination regression).
 - ✅ Phase 3 Day 4: Auditor 7-of-8 layers + Reflexion judge backend — DONE 2026-05-12 (commit 633e368), 27 unit assertions PASS. Phoenix semantic eval (layer 6) deferred until Arize wired.
 - ✅ Phase 3 Day 5: Tool Registry — **DONE 2026-05-13** (commit 26ca43b). Runtime worker dispatch via `.tpm_context/tool_registry.json`; 5 entries (report/excel/calc/vision/analyze-fallback). MCP protocol entries accepted by loader but resolve() rejects (deferred).
@@ -83,7 +83,7 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 12. **Inquiry-First (Section 8):** orchestrator now asks user about user-specific subjects (MAKINO/SHIBAURA tags, "ของเรา", machine codes) before falling through to L3. Skip rules: emergency, night_cycle, is_definition/is_standard_reference.
 13. **Auditor (7 of 8 layers):** every Worker output runs through schema + cove_numbers + quality + format + safety + confidence + egress. Same module exposes `Auditor.judge(text, ctx)` for future Reflexion N-round (§ 15.7) self-judge tier.
 14. **Knowledge ingest (Phase 1 Day 1-3):** `python scripts/ingest_doc.py <file>` or `--dir raw_data/` — markitdown→llama-index SentenceSplitter→bge-m3 embeddings→ChromaDB persistent at `chroma_db/`. `--search "query"` for ad-hoc retrieval, `--list` to inspect. Per-doc classification tag (PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED) feeds future L3 egress gate.
-15. **Vision worker (Phase 3 Day 2):** `python scripts/analyze_image.py photo.jpg --prompt "?"` — Qwen2.5-VL-3B (Ollama, ~2GB VRAM) + Tesseract OCR side-channel (optional). Writes structured JSON (description/objects/defects/actions/confidence). Setup: `ollama pull qwen2.5-vl:3b` + install tesseract Windows binary. Orchestrator routes `intent.action='vision'`.
+15. **Vision worker (Phase 3 Day 2 — OPERATIONAL):** `python scripts/analyze_image.py photo.jpg --prompt "?"` — Qwen2.5-VL-3B via Ollama (~3.2 GB; tag is `qwen2.5vl:3b` NO dash) + Tesseract 5.5.0 OCR side-channel. Writes structured JSON (description/objects/defects/actions/confidence). Auto-locates Tesseract at `C:\Program Files\Tesseract-OCR\tesseract.exe` even when not on PATH. Orchestrator routes `intent.action='vision'`. **Thai OCR optional:** drop `tha.traineddata` from https://github.com/tesseract-ocr/tessdata_fast into `C:\Program Files\Tesseract-OCR\tessdata\` to enable `lang='tha+eng'` (worker already falls back to `eng` if missing).
 16. **Tool Registry (Phase 3 Day 5):** orchestrator now reads `.tpm_context/tool_registry.json` at dispatch time. Swap workers by editing JSON (no code edits). Hard-coded dispatch kept as fallback so a broken registry never bricks the orchestrator.
 17. **PM tracker mini-project (Section 25.2.5):** `python scripts/log_pm.py M-101 clean --shots 12000` to log events. `python scripts/pm_dashboard.py M-101` → matplotlib 2x2 PNG (cumulative shots / event timeline / shots between PM / defect breakdown). Day 1 of internship = drop-in real data.
 18. **Reflexion skeleton (§ 15.7):** `from tpm_reflexion import run_reflexion`. Loop over (attempt → judge → reflect) with patience-based early stop; uses `Auditor.judge()` as backend per 2026-05-10 re-scope. `format_outcome_for_brief()` ready to embed in morning brief. Auto-prompt update gated on 30-day approval (Phase 2 = post-internship).
@@ -139,7 +139,8 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - **cl.Message + cl.Action in Chainlit** → buttons don't fire reliably → use cl.AskUserMessage
 - **duckduckgo-search** package renamed to `ddgs` (mid-2025)
 - **SearXNG + Google/Bing** → self-hosted gets IP-blocked in 1-3 days → disabled (G-10)
-- **Vision model** → Qwen2.5-VL-7B + Orchestrator = 10 GB VRAM → OOM; use 3B default
+- **Vision model** → Qwen2.5-VL-7B + Orchestrator = 10 GB VRAM → OOM; use 3B default. **Ollama tag is `qwen2.5vl:3b` (NO dash between qwen2.5 and vl)** — wrong tag fails with "pull model manifest: file does not exist". Verified pull 2026-05-13.
+- **Tesseract binary on Windows** → installer writes to `C:\Program Files\Tesseract-OCR\` and adds to system PATH, but **existing shells don't see it until restart**. `tpm_workers/vision.py::_locate_tesseract()` falls back through standard install paths + sets `pytesseract.tesseract_cmd` explicitly. Thai OCR data is a separate download (`tha.traineddata` from tessdata_fast repo); worker falls back to English without it.
 - **Windows sleep** → Night Cycle dies if laptop sleeps → `_prevent_sleep()` already patched
 - **Qwen3-Coder** → name may differ in Ollama registry → run `ollama search` before pull
 - **LLM intent parser** confuses "ที่ถามไปกลับตอบมา" / "in Thai" as meta-talk → already fixed in INTENT_PARSER_SYSTEM
@@ -166,7 +167,7 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - **Mem0 / Letta / Zep** → replaced by ChromaDB "user_memory" collection (simpler, no extra service)
 - **Hermes-4-35B-A3B (MoE)** → 21 GB VRAM still OOM on 8 GB even with q8_0 cache
 - **Real Toshiba data ingest** → using raw_data/_dummy/ smoke-tested 2026-05-13; pipeline ready for Day 1 drop-in
-- **Qwen2.5-VL-3B model pull** (~2GB) + Tesseract Windows binary install → required to actually run Vision worker; scaffold is mock-tested ready
+- **Thai OCR data for Tesseract** → drop `tha.traineddata` into `C:\Program Files\Tesseract-OCR\tessdata\` when Thai factory labels need OCR; worker already supports tha+eng with auto-fallback to eng
 - **OpenFOAM** → CFD for cooling channel analysis; setup takes 3-7 days, out of intern scope
 - **Activity Tracker Tier 3** → OS-level app tracking via PowerShell (active-win-listener ไม่รองรับ WSL2)
 - **Microsoft Copilot escalation** → wired but never triggers (local works fine)
@@ -206,11 +207,13 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 
 ## Recommended next steps (post pre-internship build-out)
 - ~~A-H pre-internship features~~ ✅ DONE 2026-05-12 / 13
-- ~~K) GitHub push~~ ✅ DONE 2026-05-13 (16 main + 1 .tpm_context pushed to origin)
+- ~~I) Pull Qwen2.5-VL + install Tesseract~~ ✅ DONE 2026-05-13 (real model + binary + e2e verified, commit 62d574e)
+- ~~K) GitHub push~~ ✅ DONE 2026-05-13 (all session commits on both repos)
 - ~~L) Wire Reflexion into morning brief~~ ✅ DONE 2026-05-13 (commit 488f44a)
-- **I) Pull Qwen2.5-VL-3B + install Tesseract** — one-time setup so Vision worker can run on real photos. **Note 2026-05-13:** `ollama pull qwen2.5-vl:3b` couldn't reach the Ollama registry from current env (network restriction); user run on a network where ollama.com is reachable. Verify the correct tag first via `ollama search qwen2.5 vl` or `ollama.com/library`. Tesseract Windows installer: https://github.com/UB-Mannheim/tesseract/wiki.
-- **J) Multi-day Night Cycle soak** — let `scripts/night_cycle.py` run unattended overnight 3-5 nights, inspect morning briefs for drift. Bug #7 fix should hold. Verified single-run smoke 2026-05-13: 1 session replayed, 0 diffs, brief written cleanly with new Reflexion section integration.
-- **M) Update § 15.1 schedule in MASTER_PLAN_v6** — § 15.7 + § 15.8 implementation states changed; sync the index.
+- ~~M) Update § 15.1 schedule~~ ✅ DONE 2026-05-13 (commit 6a1341b)
+- **J) Multi-night Night Cycle soak** — let `scripts/night_cycle.py` run unattended 3-5 nights, inspect morning briefs for drift. Single-run smoke clean 2026-05-13 (1 session, 0 diffs). Best run: schedule via Task Scheduler at 22:00 nightly.
+- **N) Drop Thai OCR data** (optional) — `tha.traineddata` from tessdata_fast → `C:\Program Files\Tesseract-OCR\tessdata\`. Worker auto-uses it when present.
+- **O) When at Toshiba Day 1:** `python scripts/ingest_doc.py --dir <real_docs>` + `python scripts/log_pm.py <mold> register --material <steel>` + `python scripts/analyze_image.py <defect_photo>`. Everything is wired; no code changes needed for the golden path.
 
 When internship starts (Day 1):
 - Ingest real Toshiba PDFs via `scripts/ingest_doc.py --dir <real_data_path>`
@@ -227,7 +230,7 @@ When internship starts (Day 1):
 - Use bash for git/curl/cli, PowerShell only when bash chokes (process kill, scheduled tasks)
 - Path canonical in code: `Path("/mnt/d/tpm_workspace")` (WSL2) — never hardcode Windows path
 
-Now: read the docs above and ask what to work on. Do NOT start coding without my picking I/J/M (K + L already done).
+Now: read the docs above and ask what to work on. The pre-internship build-out is COMPLETE (~92%). Only J (multi-night soak), N (Thai OCR data, optional), or O (Day-1 internship data ingest) remain.
 ```
 
 ---
@@ -386,10 +389,17 @@ python scripts\ingest_doc.py --search "lockout tagout"
 
 ---
 
-**Generated:** 2026-05-13 (F + E + C + B + A + D + G all shipped in one autonomous run)
-**Project state:** ~88% by plan / ~92% functional (6 features shipped this session; remaining 12% needs real internship data)
+**Generated:** 2026-05-13 (handoff refresh — pre-internship build-out complete; Vision worker fully operational, all blockers cleared)
+**Project state:** ~92% by plan / ~95% functional. Remaining 8% = real Toshiba data on Day 1 + multi-night soak validation + Phase 5 DSPy (after ≥1 month production).
 **Plan version:** MASTER_PLAN_v6.md (26 top-level sections; § 15 expanded with 15.7 + 15.8 + 15.9 v6.1 spec drafts)
-**Last session highlights (2026-05-13, autonomous run):**
+**Late additions in session 2026-05-13 (real deployment):**
+- ✅ Qwen2.5-VL-3B model pulled (3.2 GB at correct tag `qwen2.5vl:3b` — NO dash; gotcha added).
+- ✅ Tesseract 5.5.0 installed silent at `C:\Program Files\Tesseract-OCR\`. `_locate_tesseract()` fallback added so the binary works without PATH refresh.
+- ✅ Vision worker e2e verified on synthetic gauge image: OCR'd "TEMP: 245 C" + "WARNING: APPROACHING LIMIT", VLM identified 4 objects at conf=0.90, output JSON written, all 4 worker steps succeeded.
+- ✅ Fixes pushed: commit 62d574e on origin/main.
+- ⏸️ Thai OCR data (`tha.traineddata`) not installed — worker falls back to English automatically; drop the file later if Thai factory labels appear.
+
+**Main feature work in session 2026-05-13 (autonomous run):**
 - ✅ **F — Soak test + 2 bugs fixed** (commit e489c4e). Extended `scripts/test_battery.py` from 10 → 24 prompts; ran 17 (skip-workers) + 5 calc workers. Found + fixed (1) calc formula picker steered by LLM-hallucinated `intent.scope` ("calculate stress" overriding clamping_force prompt) — fix: drop scope from haystack + multi-word keyword bonus; (2) `session_store.SessionRecord` schema missing the 5 new inquiry_* fields — fix: extend + verified persists on next run. Bug #7 fix held throughout 15 min soak.
 - ✅ **E — PM tracker mini-project shell** (commit 0928532, Section 25.2.5). `tpm_mold/pm_log.py` (PMEvent JSONL per mold, 9 actions, status/deltas/breakdown queries); `scripts/log_pm.py` CLI; `scripts/pm_dashboard.py` matplotlib 2x2 dashboard PNG. Smoke verified on synthetic M-DEMO-01 with 11 events. 20 assertions PASS.
 - ✅ **C — Phase 1 Day 1-3 ingest pipeline** (commit 917ae9f). `tpm_knowledge/`: markitdown→llama-index SentenceSplitter→bge-m3 embeddings→ChromaDB persistent. `scripts/ingest_doc.py` for single-file/bulk/list/search. Skipped `llama-index-vector-stores-chroma` adapter (its chroma-hnswlib dep needs MSVC); chromadb called directly. Smoke verified by ingesting 2 dummy MD files → 3 chunks → query returns ranked results. 14 assertions PASS.
