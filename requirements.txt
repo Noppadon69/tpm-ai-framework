@@ -46,6 +46,7 @@ crawl4ai>=0.3.0       # OSS headless scraping
 trafilatura>=1.12     # main content extraction
 beautifulsoup4>=4.12
 httpx>=0.27           # async HTTP (also used for Jina Reader r.jina.ai/<url>)
+truststore>=0.10      # use Windows cert store so Avast/MITM intermediates verify
 
 # ============================================================
 # Browser automation
