@@ -382,6 +382,13 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
                 results.results[0].model_dump() if results.results else None
             ),
             "all_titles": [r.title for r in results.results[:5]],
+            # Title + URL for the top 5 hits so downstream renderers (e.g.
+            # the Telegram bridge formatter) can expand citation markers
+            # like [1] [2] [3] from the synthesised answer into a real list.
+            "top_results": [
+                {"title": r.title, "url": r.url, "snippet": (r.snippet or "")[:200]}
+                for r in results.results[:5]
+            ],
         }
         state.recon_quality = 1.0 if results.is_useful() else 0.0
         state.recon_complete = True

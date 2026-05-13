@@ -169,12 +169,63 @@ def _run_py(args: list[str], timeout_s: int) -> str:
 _SESSION_RE = re.compile(r"session=([0-9a-f]{8,})")
 
 
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+# Strip any "Sources:" / "*Sources:*" / "**Sources:**" footer the LLM appended
+# (inline bare-number form OR multi-line "[N] <url>" form) and everything
+# after it. We replace it with our own rendering from search.top_results.
+_SOURCES_FOOTER_RE = re.compile(
+    r"\n*\s*\**\s*sources?\s*:?\**.*\Z",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _render_sources_list(search: dict | None, answer: str) -> str:
+    """
+    Build a readable 'Sources:' footer mapping [N] markers in `answer` to the
+    real result title + URL from search.top_results. Falls back to all_titles
+    (no URLs) when working against older session JSONs.
+    """
+    if not search:
+        return ""
+    top = search.get("top_results") or []
+    if not top:
+        # legacy session JSON shape - titles only
+        titles = search.get("all_titles") or []
+        if not titles:
+            return ""
+        cited = sorted({int(n) for n in _CITATION_RE.findall(answer)})
+        # if no explicit citation markers, show top 3 anyway
+        idxs = cited if cited else list(range(1, min(4, len(titles) + 1)))
+        lines = ["Sources:"]
+        for i in idxs:
+            if 1 <= i <= len(titles):
+                lines.append(f"[{i}] {titles[i-1]}")
+        return "\n".join(lines)
+
+    cited = sorted({int(n) for n in _CITATION_RE.findall(answer)})
+    if not cited:
+        # show the first 3 anyway so the user has something to follow
+        cited = list(range(1, min(4, len(top) + 1)))
+    lines = ["Sources:"]
+    for i in cited:
+        if 1 <= i <= len(top):
+            r = top[i - 1]
+            title = (r.get("title") or "").strip() or "(untitled)"
+            url = (r.get("url") or "").strip()
+            lines.append(f"[{i}] {title}")
+            if url:
+                lines.append(f"    {url}")
+    return "\n".join(lines)
+
+
 def _format_orchestrator_result(data: dict) -> str:
     """
     Pretty-format what the orchestrator wrote to its session JSON.
 
-    Prefer final_output.answer (lookup / search synthesis). Otherwise look
-    for worker-specific summaries. Last resort: surface the error.
+    Prefer final_output.answer (lookup / search synthesis) + expand the
+    LLM's bare-bones "[1] [2] [3]" sources footer into a readable list of
+    title + URL using search.top_results. Otherwise look for worker-
+    specific summaries. Last resort: surface the error.
     """
     fo = data.get("final_output") or {}
     intent = data.get("intent") or {}
@@ -183,7 +234,14 @@ def _format_orchestrator_result(data: dict) -> str:
     # Direct answer from lookup/search/synthesis pipeline
     ans = fo.get("answer")
     if isinstance(ans, str) and ans.strip():
-        return ans.strip()
+        body = ans.strip()
+        # Strip the LLM's footer like "**Sources:** [1], [2], [3]" - we'll
+        # replace it with a real list using search.top_results below.
+        stripped = _SOURCES_FOOTER_RE.sub("", body).rstrip()
+        sources = _render_sources_list(fo.get("search"), body)
+        if sources:
+            return f"{stripped}\n\n{sources}"
+        return stripped
 
     # Worker outputs land under final_output too in some shapes
     for key in ("summary", "result", "text", "output"):

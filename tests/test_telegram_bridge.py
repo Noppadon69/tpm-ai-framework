@@ -163,6 +163,90 @@ def t_format_diagnostic_fallback() -> None:
           "no answer field" in out and "phase=done" in out)
 
 
+# --------------------------------------------------------------------------
+# Sources-footer rewriting
+# --------------------------------------------------------------------------
+def t_strips_inline_sources_footer() -> None:
+    data = {
+        "intent": {"action": "lookup"},
+        "final_output": {
+            "answer": "FEMA helps. *Sources:* [1], [2]",
+            "search": {"top_results": [
+                {"title": "FEMA.gov", "url": "https://www.fema.gov/"},
+                {"title": "USAGov", "url": "https://www.usa.gov/"},
+            ]},
+        },
+    }
+    out = tb._format_orchestrator_result(data)
+    check("sources-inline: footer stripped",
+          "*Sources:* [1], [2]" not in out)
+    check("sources-inline: real list added",
+          "Sources:" in out and "FEMA.gov" in out and "https://www.fema.gov/" in out)
+
+
+def t_strips_multiline_sources_footer() -> None:
+    answer = (
+        "FEMA does disaster relief [3].\n\n"
+        "**Sources:**\n"
+        "[1] https://www.fema.gov/\n"
+        "[2] https://www.disasterassistance.gov/\n"
+        "[3] https://www.usa.gov/fema"
+    )
+    data = {
+        "intent": {"action": "lookup"},
+        "final_output": {
+            "answer": answer,
+            "search": {"top_results": [
+                {"title": "FEMA.gov",          "url": "https://www.fema.gov/"},
+                {"title": "disasterassistance","url": "https://www.disasterassistance.gov/"},
+                {"title": "USAGov FEMA",       "url": "https://www.usa.gov/fema"},
+            ]},
+        },
+    }
+    out = tb._format_orchestrator_result(data)
+    check("sources-multi: LLM footer stripped",
+          "**Sources:**" not in out)
+    check("sources-multi: rendered title for [3]",
+          "USAGov FEMA" in out)
+    check("sources-multi: rendered url for [1]",
+          "https://www.fema.gov/" in out)
+
+
+def t_legacy_session_uses_all_titles_when_no_top_results() -> None:
+    # Older session JSONs (pre-this-commit) only have all_titles.
+    data = {
+        "intent": {"action": "lookup"},
+        "final_output": {
+            "answer": "FEMA helps [1][2][3].",
+            "search": {"all_titles": ["FEMA.gov", "USAGov", "Wikipedia FEMA"]},
+        },
+    }
+    out = tb._format_orchestrator_result(data)
+    check("legacy: titles rendered",
+          "FEMA.gov" in out and "USAGov" in out)
+    check("legacy: no URLs (graceful)",
+          "https://" not in out)
+
+
+def t_no_citations_still_renders_top3() -> None:
+    """Answer with no [N] markers - still show top 3 sources so user can verify."""
+    data = {
+        "intent": {"action": "lookup"},
+        "final_output": {
+            "answer": "FEMA does disaster work.",
+            "search": {"top_results": [
+                {"title": "A", "url": "https://a/"},
+                {"title": "B", "url": "https://b/"},
+                {"title": "C", "url": "https://c/"},
+                {"title": "D", "url": "https://d/"},
+            ]},
+        },
+    }
+    out = tb._format_orchestrator_result(data)
+    check("no-cite: shows top 3 by default",
+          "[1]" in out and "[2]" in out and "[3]" in out and "[4]" not in out)
+
+
 def t_defect_calls_subprocess() -> None:
     with patch.object(tb, "_run_py", return_value="defect output") as mock:
         reply = tb.dispatch("/defect Flash", chat_id=1, user=USER, authorized=True)
@@ -256,6 +340,10 @@ def main() -> int:
     t_format_vision_description()
     t_format_error_field()
     t_format_diagnostic_fallback()
+    t_strips_inline_sources_footer()
+    t_strips_multiline_sources_footer()
+    t_legacy_session_uses_all_titles_when_no_top_results()
+    t_no_citations_still_renders_top3()
 
     print("-" * 60)
     if FAIL == 0:
