@@ -9,7 +9,8 @@ Usage:
     python scripts/analyze_image.py path/to/photo.jpg --model qwen2.5-vl:7b
 
 Setup (one-time):
-    1. ollama pull qwen2.5-vl:3b      # ~2 GB, fits 8 GB VRAM with text orch
+    1. ollama pull qwen2.5vl:3b       # ~3.2 GB, fits 8 GB VRAM with text orch
+       (note: tag has NO dash between qwen2.5 and vl)
     2. pip install pytesseract        # optional OCR side-channel
     3. install tesseract binary       # https://github.com/UB-Mannheim/tesseract/wiki
 

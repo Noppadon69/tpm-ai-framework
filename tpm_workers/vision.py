@@ -39,7 +39,9 @@ from tpm_workers.base import WorkerInput, WorkerResult, WorkerStep, WorkerType
 
 log = logging.getLogger(__name__)
 
-DEFAULT_VISION_MODEL = os.getenv("TPM_VISION_MODEL", "qwen2.5-vl:3b")
+DEFAULT_VISION_MODEL = os.getenv("TPM_VISION_MODEL", "qwen2.5vl:3b")
+# Note: published Ollama tag has NO dash between "qwen2.5" and "vl".
+# Verified via `ollama pull qwen2.5vl:3b` on 2026-05-13 (~3.2 GB).
 SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 
 
@@ -69,6 +71,27 @@ class VisionAnalysis(BaseModel):
 # ============================================================
 # OCR side-channel (optional)
 # ============================================================
+
+# Known fallback paths for the tesseract binary on Windows; checked in order
+# when the binary isn't on PATH yet (e.g. fresh install in current shell).
+_TESSERACT_FALLBACK_PATHS = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Programs\Tesseract-OCR\tesseract.exe"),
+]
+
+
+def _locate_tesseract() -> Optional[str]:
+    """Return path to tesseract.exe, or None if not installed."""
+    on_path = shutil.which("tesseract")
+    if on_path:
+        return on_path
+    for p in _TESSERACT_FALLBACK_PATHS:
+        if p and Path(p).exists():
+            return p
+    return None
+
+
 def _run_ocr(image_path: Path) -> tuple[str, str]:
     """Returns (ocr_text, engine_status). engine_status is purely informational."""
     try:
@@ -77,8 +100,11 @@ def _run_ocr(image_path: Path) -> tuple[str, str]:
     except ImportError:
         return "", "skipped: pytesseract or Pillow not installed"
 
-    if not shutil.which("tesseract"):
-        return "", "skipped: tesseract binary not on PATH"
+    tess = _locate_tesseract()
+    if not tess:
+        return "", "skipped: tesseract binary not found"
+    # Point pytesseract at the resolved binary (covers fresh-install + missing-PATH)
+    pytesseract.pytesseract.tesseract_cmd = tess
 
     try:
         img = Image.open(image_path)
