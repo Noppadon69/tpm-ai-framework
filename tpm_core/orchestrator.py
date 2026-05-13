@@ -547,20 +547,42 @@ def _run_worker_branch(state: TPMState, intent: Intent, ui: UI) -> TPMState:
 
     ui.info(f"\n[plan] dispatch worker: {inp.worker_type.value} for {inp.target_subject!r}")
 
-    if inp.worker_type == WorkerType.REPORT:
-        result = run_report_worker(inp, model=DEFAULT_MODEL)
-    elif inp.worker_type == WorkerType.CALC:
-        result = run_calc_worker(inp)
-    elif inp.worker_type == WorkerType.VISION:
-        # Vision worker reads image path from intent.constraints['image_path']
-        # (the intent parser doesn't have a slot for it; downstream callers
-        # pass via WorkerInput.extras or set image_path via constraints).
-        img_path = (intent.constraints or {}).get("image_path", "")
-        if img_path:
-            inp.extras["image_path"] = img_path
-        result = run_vision_worker(inp)
-    else:
-        result = run_excel_worker(inp)
+    # Try the runtime tool registry first (Phase 3 Day 5). On miss or
+    # resolve failure, fall through to the hard-coded dispatch below so
+    # the orchestrator stays runnable even if the registry JSON is empty
+    # or temporarily broken.
+    result = None
+    try:
+        from tpm_tools.registry import get_for_action
+        entry = get_for_action(action)
+        if entry is not None:
+            fn = entry.resolve()
+            ui.info(f"[plan] registry route: {entry.id} ({entry.name})")
+            # Per-worker conditioning (some need extra context the registry doesn't carry)
+            if inp.worker_type == WorkerType.VISION:
+                img_path = (intent.constraints or {}).get("image_path", "")
+                if img_path:
+                    inp.extras["image_path"] = img_path
+            # Report worker needs the chat model; others don't
+            if inp.worker_type == WorkerType.REPORT:
+                result = fn(inp, model=DEFAULT_MODEL)
+            else:
+                result = fn(inp)
+    except Exception as e:  # noqa: BLE001
+        log.warning("registry dispatch failed (%s); falling back to hard-coded", e)
+
+    if result is None:
+        if inp.worker_type == WorkerType.REPORT:
+            result = run_report_worker(inp, model=DEFAULT_MODEL)
+        elif inp.worker_type == WorkerType.CALC:
+            result = run_calc_worker(inp)
+        elif inp.worker_type == WorkerType.VISION:
+            img_path = (intent.constraints or {}).get("image_path", "")
+            if img_path:
+                inp.extras["image_path"] = img_path
+            result = run_vision_worker(inp)
+        else:
+            result = run_excel_worker(inp)
 
     # Pretty-print summary
     ui.info("")
