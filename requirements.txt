@@ -84,6 +84,7 @@ scipy>=1.14
 pandas>=2.2
 polars>=1.10
 pint>=0.24            # unit-aware calculations
+matplotlib>=3.9       # PM dashboard (Section 25.2.5)
 
 # ============================================================
 # System monitoring

@@ -10,6 +10,19 @@ Submodules:
   process_spec   - typical process-parameter ranges (injection / press)
 """
 from tpm_mold.analyse import MoldDiagnosis, ParamDeviation, analyse
+from tpm_mold.pm_log import (
+    PMAction,
+    PMEvent,
+    MoldStatus,
+    append_event,
+    defect_breakdown,
+    events_in_range,
+    list_molds,
+    load_events,
+    register_mold,
+    shots_between_pm,
+    status_for,
+)
 from tpm_mold.defect_catalog import (
     DEFECT_CATALOG,
     InjectionDefect,
@@ -36,4 +49,15 @@ __all__ = [
     "MoldDiagnosis",
     "ParamDeviation",
     "analyse",
+    "PMAction",
+    "PMEvent",
+    "MoldStatus",
+    "append_event",
+    "defect_breakdown",
+    "events_in_range",
+    "list_molds",
+    "load_events",
+    "register_mold",
+    "shots_between_pm",
+    "status_for",
 ]
