@@ -3444,9 +3444,13 @@ async def vision_rag_crosscheck(date):
 
 ---
 
-## 15.9 Updated Schedule (pending § 15.7 + § 15.8 implementation)
+## 15.9 Updated Schedule (partial implementation tracking)
 
-When § 15.7 + § 15.8 are implemented, § 15.1 schedule will become:
+**Status 2026-05-13:**
+- § 15.7 Reflexion N-round: **SKELETON DONE** (`tpm_reflexion/`, commit 4500889) + **wired into morning brief** (commit 488f44a). 18/18 synthetic tests PASS. ACTUAL rollout still deferred per spec (needs real Toshiba failures from internship Day 1).
+- § 15.8 Vision-RAG cross-check: spec drafted only. Implementation blocked on Phase 1 Day 1 real wiki + Phase 3 Day 2 Vision calibration on real defect photos. Vision worker SCAFFOLD now exists (`tpm_workers/vision.py`, commit baa15d4) so the hook point is ready.
+
+When § 15.7 + § 15.8 are FULLY implemented (post-internship), § 15.1 schedule will become:
 
 ```
 22:00  Activity Pattern Analysis
