@@ -135,6 +135,47 @@ def t_status_includes_ollama_check() -> None:
     check("status: mentions main checkout", "main checkout:" in reply.lower())
 
 
+def t_photo_blocked_when_unauthorized() -> None:
+    msg = {"photo": [{"file_id": "FAKE", "file_size": 1000}]}
+    reply = tb.handle_photo(api="x", token="x", msg=msg, chat_id=999, authorized=False)
+    check("photo-unauth: blocked", "unauthorized" in reply.lower())
+    check("photo-unauth: mentions allowlist", "TPM_TELEGRAM_ALLOWED_USERS" in reply)
+
+
+def t_photo_missing_payload() -> None:
+    reply = tb.handle_photo(api="x", token="x", msg={}, chat_id=1, authorized=True)
+    check("photo-missing: surfaces error", "no photo" in reply.lower())
+
+
+def t_photo_routes_to_analyze_image() -> None:
+    msg = {
+        "photo": [
+            {"file_id": "SMALL", "file_size": 100},
+            {"file_id": "BIG",   "file_size": 9999},
+        ],
+        "caption": "what defect is this?",
+    }
+    # Stub the download to a tempfile that "exists"
+    import tempfile, os
+    fd, tmp = tempfile.mkstemp(suffix=".jpg")
+    os.close(fd)
+    try:
+        with patch.object(tb, "_download_telegram_file", return_value=Path(tmp)) as dl, \
+             patch.object(tb, "_run_py", return_value="VLM stub output") as rp:
+            reply = tb.handle_photo(api="x", token="x", msg=msg, chat_id=1, authorized=True)
+        check("photo-route: download invoked",  dl.call_count == 1)
+        check("photo-route: picked BIG file_id", dl.call_args.args[2] == "BIG")
+        check("photo-route: _run_py called",     rp.call_count == 1)
+        args, _ = rp.call_args
+        cmd = " ".join(args[0])
+        check("photo-route: analyze_image script", "analyze_image.py" in cmd)
+        check("photo-route: caption passed as --prompt",
+              "--prompt" in args[0] and "what defect is this?" in args[0])
+        check("photo-route: reply forwards stub", "VLM stub output" in reply)
+    finally:
+        os.unlink(tmp)
+
+
 def main() -> int:
     print("=" * 60)
     print("Telegram bridge dispatch tests")
@@ -153,6 +194,9 @@ def main() -> int:
     t_defect_calls_subprocess()
     t_pm_calls_subprocess_with_default_status()
     t_status_includes_ollama_check()
+    t_photo_blocked_when_unauthorized()
+    t_photo_missing_payload()
+    t_photo_routes_to_analyze_image()
 
     print("-" * 60)
     if FAIL == 0:

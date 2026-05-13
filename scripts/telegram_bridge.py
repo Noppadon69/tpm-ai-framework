@@ -181,6 +181,7 @@ HELP_TEXT = (
     "/defect <name>   mold defect lookup, e.g. /defect Flash\n"
     "/pm <mold_id>    PM status for a mold, e.g. /pm M-101\n"
     "/calc <expr>     quick SymPy calc, e.g. /calc 50000/2.5e-5\n"
+    "(photo)          send a photo (with optional caption) -> Vision worker\n"
     "(plain text)     full orchestrator pipeline via cli_demo.py (LLM)\n"
 )
 
@@ -252,6 +253,78 @@ def _cmd_calc(arg: str) -> str:
         return f"{expr} = {val}"
     except Exception as e:  # noqa: BLE001
         return f"[calc error] {type(e).__name__}: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Photo handler (Telegram getFile + Vision worker)
+# ---------------------------------------------------------------------------
+TELEGRAM_PHOTOS_DIR = MAIN_CHECKOUT / "raw_data" / "telegram_photos"
+
+
+def _download_telegram_file(api: str, token: str, file_id: str,
+                            target_dir: Path) -> Path | None:
+    """Resolve a Telegram file_id to a local Path."""
+    try:
+        r = httpx.get(f"{api}/getFile", params={"file_id": file_id}, timeout=10.0)
+        r.raise_for_status()
+        info = r.json().get("result", {})
+        remote_path = info.get("file_path")
+        if not remote_path:
+            return None
+        url = f"https://api.telegram.org/file/bot{token}/{remote_path}"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        # use the remote filename so duplicate uploads don't collide too badly
+        local = target_dir / Path(remote_path).name
+        with httpx.Client(timeout=30.0) as c:
+            d = c.get(url)
+            d.raise_for_status()
+            local.write_bytes(d.content)
+        return local
+    except Exception as e:  # noqa: BLE001
+        logging.error("download_telegram_file failed: %s", e)
+        return None
+
+
+def handle_photo(api: str, token: str, msg: dict, chat_id: int,
+                 authorized: bool) -> str:
+    """Process an inbound photo: download -> analyze_image.py -> short reply."""
+    if not authorized:
+        return (
+            f"unauthorized chat_id {chat_id} - photo analysis disabled. "
+            f"Add your id to TPM_TELEGRAM_ALLOWED_USERS in .env."
+        )
+    photos = msg.get("photo") or []
+    if not photos:
+        return "[bridge] no photo payload"
+    # photo array is sorted small -> large; pick the biggest size
+    biggest = max(photos, key=lambda p: p.get("file_size", 0))
+    file_id = biggest.get("file_id")
+    if not file_id:
+        return "[bridge] photo missing file_id"
+
+    caption = (msg.get("caption") or "").strip()
+
+    local = _download_telegram_file(api, token, file_id, TELEGRAM_PHOTOS_DIR)
+    if local is None or not local.is_file():
+        return "[bridge] photo download failed"
+
+    script = SCRIPTS / "analyze_image.py"
+    if not script.is_file():
+        return f"[bridge] {script.name} missing - vision worker not available"
+
+    args = [str(script), str(local)]
+    if caption:
+        args += ["--prompt", caption]
+    raw = _run_py(args, CLI_TIMEOUT_S)
+
+    # analyze_image.py prints a summary + writes JSON. Surface a compact
+    # multi-line reply: top of stdout + the JSON path if we can find it.
+    head = "\n".join(raw.splitlines()[:30])
+    return (
+        f"[vision] {local.name}"
+        + (f"\ncaption: {caption}" if caption else "")
+        + f"\n\n{head}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -355,20 +428,26 @@ def main() -> int:
                 chat = msg.get("chat") or {}
                 user = msg.get("from") or {}
                 chat_id = chat.get("id")
-                text = (msg.get("text") or "").strip()
-                if not chat_id or not text:
+                if not chat_id:
                     continue
                 authorized = (not allowlist) or (chat_id in allowlist)
-                logging.info(
-                    "<- %s (%s@%s): %s",
-                    chat_id,
-                    "AUTH" if authorized and allowlist else ("OPEN" if authorized else "DENY"),
-                    user.get("username", "?"),
-                    text[:120],
-                )
+                auth_tag = "AUTH" if authorized and allowlist else ("OPEN" if authorized else "DENY")
+                has_photo = bool(msg.get("photo"))
+                text = (msg.get("text") or "").strip()
 
-                _send_typing(api, chat_id)
-                reply = dispatch(text, chat_id, user, authorized)
+                if has_photo:
+                    logging.info("<- %s (%s@%s): [photo]", chat_id, auth_tag,
+                                 user.get("username", "?"))
+                    _send_typing(api, chat_id)
+                    reply = handle_photo(api, token, msg, chat_id, authorized)
+                elif text:
+                    logging.info("<- %s (%s@%s): %s", chat_id, auth_tag,
+                                 user.get("username", "?"), text[:120])
+                    _send_typing(api, chat_id)
+                    reply = dispatch(text, chat_id, user, authorized)
+                else:
+                    continue  # ignore stickers / locations / other media for now
+
                 _send_message(api, chat_id, reply)
                 logging.info("-> %s: (%d chars)", chat_id, len(reply))
         except KeyboardInterrupt:
