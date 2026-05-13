@@ -311,7 +311,7 @@ def make_plan_node(ui: UI, model: str) -> Callable[[TPMState], TPMState]:
     from tpm_search.types import Classification
 
     # Worker actions vs lookup actions
-    WORKER_ACTIONS = {"report", "excel", "calc", "edit", "analyze"}
+    WORKER_ACTIONS = {"report", "excel", "calc", "edit", "analyze", "vision"}
 
     def node_plan(state: TPMState) -> TPMState:
         intent = state.intent
@@ -500,13 +500,14 @@ def _run_worker_branch(state: TPMState, intent: Intent, ui: UI) -> TPMState:
     from tpm_workers.data_loader import list_equipment_tags
     from tpm_workers.excel import run_excel_worker
     from tpm_workers.report import run_report_worker
+    from tpm_workers.vision import run_vision_worker
 
     action = intent.action.lower()
 
     # Resolve target equipment from intent.subject - try fuzzy match
-    # (skip for pure calc: subject is usually a quantity, not equipment)
+    # (skip for pure calc + vision: subject is usually a path / quantity)
     target = intent.subject or ""
-    if target and action != "calc":
+    if target and action not in ("calc", "vision"):
         known = list_equipment_tags()
         # exact tag match wins
         if target not in known:
@@ -527,6 +528,9 @@ def _run_worker_branch(state: TPMState, intent: Intent, ui: UI) -> TPMState:
     elif action == "excel":
         worker_type = WorkerType.EXCEL
         output_subdir = "excel"
+    elif action == "vision":
+        worker_type = WorkerType.VISION
+        output_subdir = "vision"
     else:
         worker_type = WorkerType.REPORT
         output_subdir = "reports"
@@ -547,6 +551,14 @@ def _run_worker_branch(state: TPMState, intent: Intent, ui: UI) -> TPMState:
         result = run_report_worker(inp, model=DEFAULT_MODEL)
     elif inp.worker_type == WorkerType.CALC:
         result = run_calc_worker(inp)
+    elif inp.worker_type == WorkerType.VISION:
+        # Vision worker reads image path from intent.constraints['image_path']
+        # (the intent parser doesn't have a slot for it; downstream callers
+        # pass via WorkerInput.extras or set image_path via constraints).
+        img_path = (intent.constraints or {}).get("image_path", "")
+        if img_path:
+            inp.extras["image_path"] = img_path
+        result = run_vision_worker(inp)
     else:
         result = run_excel_worker(inp)
 

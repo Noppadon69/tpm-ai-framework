@@ -85,6 +85,7 @@ pandas>=2.2
 polars>=1.10
 pint>=0.24            # unit-aware calculations
 matplotlib>=3.9       # PM dashboard (Section 25.2.5)
+pytesseract>=0.3.10   # OCR side-channel for Vision worker (needs tesseract binary)
 
 # ============================================================
 # System monitoring
