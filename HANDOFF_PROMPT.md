@@ -205,12 +205,11 @@ Progress slides: scripts/weekly_progress.py → .pptx for manager (Friday 17:00)
 - Phase 3 Day 4 (Auditor 8-layer + CoVe) — should be **re-scoped to BE the § 15.7 judge backend** (avoid building 2 separate judging systems)
 
 ## Recommended next steps (post pre-internship build-out)
-All of A-H below are DONE. What's left has external blockers:
-- ~~A-H pre-internship work~~ ✅ DONE 2026-05-12 / 13 — see "Recently resolved" section
-- **I) Pull Qwen2.5-VL-3B + install Tesseract** — one-time setup so Vision worker can run on real photos. `ollama pull qwen2.5-vl:3b` (~2GB) + Tesseract Windows installer (https://github.com/UB-Mannheim/tesseract/wiki).
-- **J) Multi-day Night Cycle soak** — let `scripts/night_cycle.py` run unattended overnight 3-5 nights, inspect morning briefs for drift. Bug #7 fix should hold.
-- **K) Push to GitHub** — current session has ~10 commits not pushed; run `git push` on main repo + `.tpm_context` private repo.
-- **L) Wire Reflexion outcome into morning_brief.py** — small (~5 lines): on Night Cycle replay failure, call `run_reflexion()` and `format_outcome_for_brief()`, append to the brief.
+- ~~A-H pre-internship features~~ ✅ DONE 2026-05-12 / 13
+- ~~K) GitHub push~~ ✅ DONE 2026-05-13 (16 main + 1 .tpm_context pushed to origin)
+- ~~L) Wire Reflexion into morning brief~~ ✅ DONE 2026-05-13 (commit 488f44a)
+- **I) Pull Qwen2.5-VL-3B + install Tesseract** — one-time setup so Vision worker can run on real photos. **Note 2026-05-13:** `ollama pull qwen2.5-vl:3b` couldn't reach the Ollama registry from current env (network restriction); user run on a network where ollama.com is reachable. Verify the correct tag first via `ollama search qwen2.5 vl` or `ollama.com/library`. Tesseract Windows installer: https://github.com/UB-Mannheim/tesseract/wiki.
+- **J) Multi-day Night Cycle soak** — let `scripts/night_cycle.py` run unattended overnight 3-5 nights, inspect morning briefs for drift. Bug #7 fix should hold. Verified single-run smoke 2026-05-13: 1 session replayed, 0 diffs, brief written cleanly with new Reflexion section integration.
 - **M) Update § 15.1 schedule in MASTER_PLAN_v6** — § 15.7 + § 15.8 implementation states changed; sync the index.
 
 When internship starts (Day 1):
@@ -228,7 +227,7 @@ When internship starts (Day 1):
 - Use bash for git/curl/cli, PowerShell only when bash chokes (process kill, scheduled tasks)
 - Path canonical in code: `Path("/mnt/d/tpm_workspace")` (WSL2) — never hardcode Windows path
 
-Now: read the docs above and ask what to work on. Do NOT start coding without my picking I/J/K/L/M.
+Now: read the docs above and ask what to work on. Do NOT start coding without my picking I/J/M (K + L already done).
 ```
 
 ---
