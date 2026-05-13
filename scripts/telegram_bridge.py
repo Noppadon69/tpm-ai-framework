@@ -17,12 +17,15 @@ Why exist when services/n8n/ scaffold also targets Telegram:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
@@ -163,10 +166,114 @@ def _run_py(args: list[str], timeout_s: int) -> str:
         return f"[exception] {type(e).__name__}: {e}"
 
 
+_SESSION_RE = re.compile(r"session=([0-9a-f]{8,})")
+
+
+def _format_orchestrator_result(data: dict) -> str:
+    """
+    Pretty-format what the orchestrator wrote to its session JSON.
+
+    Prefer final_output.answer (lookup / search synthesis). Otherwise look
+    for worker-specific summaries. Last resort: surface the error.
+    """
+    fo = data.get("final_output") or {}
+    intent = data.get("intent") or {}
+    action = intent.get("action") or ""
+
+    # Direct answer from lookup/search/synthesis pipeline
+    ans = fo.get("answer")
+    if isinstance(ans, str) and ans.strip():
+        return ans.strip()
+
+    # Worker outputs land under final_output too in some shapes
+    for key in ("summary", "result", "text", "output"):
+        v = fo.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    # Worker-specific structured outputs
+    if action == "calc":
+        calc = fo.get("calc") or {}
+        if calc.get("pretty"):
+            return calc["pretty"]
+    if action == "vision":
+        vis = fo.get("vision") or {}
+        desc = vis.get("description") or ""
+        defs = vis.get("defects") or []
+        if desc or defs:
+            return f"{desc}\n\nDefects: {', '.join(defs) if defs else '(none)'}".strip()
+
+    # Error pathway
+    err = data.get("error")
+    if err:
+        return f"[orchestrator error] {err}"
+
+    # Diagnostic fallback (still readable)
+    return (
+        f"[no answer field in session JSON]\n"
+        f"phase={data.get('final_phase')} action={action} "
+        f"subject={intent.get('subject', '')} "
+        f"duration={data.get('duration_ms', 0)}ms"
+    )
+
+
+def _find_session_json(session_id: str) -> Path | None:
+    """Look in today's and yesterday's daily dirs (cheap, covers midnight)."""
+    base = MAIN_CHECKOUT / ".tpm_context" / "decision_log" / "daily"
+    today = datetime.now()
+    for offset in (0, -1):
+        d = (today + timedelta(days=offset)).strftime("%Y-%m-%d")
+        cand = base / d / f"{session_id}.json"
+        if cand.is_file():
+            return cand
+    return None
+
+
 def _call_cli(prompt: str) -> str:
+    """
+    Run cli_demo, then read the session JSON to surface the actual synthesised
+    answer instead of the orchestrator's stdout/stderr console noise. cli_demo
+    prints session metadata (phase/intent/handoff count) to stdout but NOT the
+    answer itself - the answer lives in the auto-persisted decision_log JSON.
+    """
     if not CLI.is_file():
         return f"[bridge error] cli_demo.py not found at {CLI}"
-    return _run_py([str(CLI), prompt], CLI_TIMEOUT_S)
+    if not PY.is_file():
+        return f"[bridge error] venv python not found at {PY}"
+    try:
+        proc = subprocess.run(
+            [str(PY), str(CLI), prompt],
+            capture_output=True,
+            text=True,
+            timeout=CLI_TIMEOUT_S,
+            cwd=str(MAIN_CHECKOUT),
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        )
+    except subprocess.TimeoutExpired:
+        return f"[cli timeout {CLI_TIMEOUT_S}s] try again or shorter prompt"
+    except Exception as e:  # noqa: BLE001
+        return f"[bridge exception] {type(e).__name__}: {e}"
+
+    combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
+
+    # Find the session_id - orchestrator logs `[init] session=<sid> ...`
+    m = _SESSION_RE.search(combined)
+    if m:
+        sid = m.group(1)
+        path = _find_session_json(sid)
+        if path is not None:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return _format_orchestrator_result(data)
+            except Exception as e:  # noqa: BLE001
+                logging.warning("session JSON parse failed: %s", e)
+
+    # No session_id or no JSON yet - last-resort fallback
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    if out:
+        return out[-3500:]
+    return f"[no answer; rc={proc.returncode}]\n{err[-1200:]}"
 
 
 # ---------------------------------------------------------------------------

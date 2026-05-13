@@ -110,6 +110,59 @@ def t_plain_text_routes_to_cli() -> None:
     check("plain-auth: cli result forwarded", reply == "cli replied OK")
 
 
+# --------------------------------------------------------------------------
+# Session-JSON formatter (the fix for the unreadable-reply bug)
+# --------------------------------------------------------------------------
+def t_format_uses_final_output_answer() -> None:
+    data = {
+        "intent": {"action": "lookup"},
+        "final_output": {"answer": "FEMA is a US disaster agency."},
+    }
+    out = tb._format_orchestrator_result(data)
+    check("fmt: surfaces final_output.answer",
+          out == "FEMA is a US disaster agency.")
+
+
+def t_format_calc_pretty() -> None:
+    data = {
+        "intent": {"action": "calc"},
+        "final_output": {"calc": {"pretty": "F = 50000 N over A = 25 mm^2 -> sigma = 2000 MPa"}},
+    }
+    out = tb._format_orchestrator_result(data)
+    check("fmt: calc pretty path", "2000 MPa" in out)
+
+
+def t_format_vision_description() -> None:
+    data = {
+        "intent": {"action": "vision"},
+        "final_output": {"vision": {
+            "description": "Mold surface with flash on the parting line.",
+            "defects": ["Flash"],
+        }},
+    }
+    out = tb._format_orchestrator_result(data)
+    check("fmt: vision desc",     "parting line" in out)
+    check("fmt: vision defects",  "Flash" in out)
+
+
+def t_format_error_field() -> None:
+    data = {"intent": {}, "final_output": {}, "error": "boom"}
+    out = tb._format_orchestrator_result(data)
+    check("fmt: surfaces error", "boom" in out)
+
+
+def t_format_diagnostic_fallback() -> None:
+    data = {
+        "intent": {"action": "lookup", "subject": "X"},
+        "final_output": {},
+        "final_phase": "done",
+        "duration_ms": 1234,
+    }
+    out = tb._format_orchestrator_result(data)
+    check("fmt: diagnostic fallback",
+          "no answer field" in out and "phase=done" in out)
+
+
 def t_defect_calls_subprocess() -> None:
     with patch.object(tb, "_run_py", return_value="defect output") as mock:
         reply = tb.dispatch("/defect Flash", chat_id=1, user=USER, authorized=True)
@@ -197,6 +250,12 @@ def main() -> int:
     t_photo_blocked_when_unauthorized()
     t_photo_missing_payload()
     t_photo_routes_to_analyze_image()
+
+    t_format_uses_final_output_answer()
+    t_format_calc_pretty()
+    t_format_vision_description()
+    t_format_error_field()
+    t_format_diagnostic_fallback()
 
     print("-" * 60)
     if FAIL == 0:
