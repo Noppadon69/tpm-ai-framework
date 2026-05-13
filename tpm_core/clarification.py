@@ -135,27 +135,145 @@ def user_wants_to_skip(text: str) -> bool:
 def parse_intent(model: str, history: list[str]) -> dict[str, Any]:
     """
     Send the conversation history to the LLM and get back a parsed intent dict.
-    Returns the raw dict (not Intent object) so caller can decide what to do.
+
+    Bug #6 defense (two layers):
+      1) Mitigation (commit bbf100d): temperature=0.05 + seed=42 + timeout=60
+         avoids the Ollama grammar-stuck-sampling hang AND fails fast if it
+         happens anyway (vs 180s default). Sufficient on Ollama >= 0.23 for
+         the prompts we've seen.
+      2) Permanent fallback (this commit 2026-05-13): on ANY LLM failure
+         (timeout, network drop, JSON parse error after retries), fall back
+         to a deterministic rule-based classifier that mirrors the
+         disambiguation rules in INTENT_PARSER_SYSTEM. Confidence <= 0.55
+         so the orchestrator's clarification loop kicks in - same recovery
+         path it uses for any other low-confidence interpretation. Net
+         result: parse_intent NEVER crashes even if Ollama spins forever.
     """
     user_block = "\n---\n".join(f"User turn {i+1}: {t}" for i, t in enumerate(history))
     messages = [
         {"role": "system", "content": INTENT_PARSER_SYSTEM},
         {"role": "user", "content": user_block},
     ]
-    # temperature=0.05 + fixed seed -> near-deterministic intent classification.
-    # Pure temp=0 + seed=42 + json_schema combined to deterministically produce
-    # an empty response on certain prompts (Bug #6: "FMEA vs FTA ต่างกันยังไง").
-    # Tiny temperature (0.05) breaks the degenerate sampling without breaking
-    # day-to-day stability (action enum changes only on truly ambiguous prompts).
-    # num_predict caps runtime; timeout=60 fails fast vs Ollama 180s default.
-    return chat_json(
-        model,
-        messages,
-        json_schema=INTENT_PARSER_SCHEMA,
-        temperature=0.05,
-        seed=42,
-        timeout=60.0,
-    )
+    try:
+        return chat_json(
+            model,
+            messages,
+            json_schema=INTENT_PARSER_SCHEMA,
+            temperature=0.05,
+            seed=42,
+            timeout=60.0,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning(
+            "parse_intent: LLM call failed (%s: %s) - using deterministic "
+            "rule-based fallback (Bug #6 permanent defense)",
+            type(e).__name__, str(e)[:120],
+        )
+        return _fallback_intent_from_rules(history)
+
+
+# ============================================================
+# Bug #6 permanent fallback - deterministic rule-based intent
+# ============================================================
+# Disambiguation patterns (first match wins) mirror the system-prompt rules.
+# Keep ASCII keywords lowercase; Thai keywords as-is.
+_RULES_LOOKUP_DEF = (
+    " vs ", "ต่างกัน", "compare", "what is", "คืออะไร", "นิยาม",
+    "อธิบาย", "เป็นอะไร", " versus ", "หมายถึง",
+)
+_RULES_EXCEL    = ("excel", ".xlsx", "spreadsheet", "ออกเป็น excel", "เป็น excel")
+_RULES_REPORT   = ("เขียนรายงาน", "write a report", "report ของ", "report on", "draft report")
+_RULES_VISION   = ("รูป", "ภาพ", " image ", " photo ", "picture", "เห็นในรูป", "vlm")
+_RULES_CALC     = ("คำนวณ", "calculate", "คิด", "ผลคูณ", "ผลรวม", "compute ", "stress", "force")
+_RULES_ANALYZE  = ("pareto", "trend", "downtime", "วิเคราะห์", "histogram", "data analysis")
+_RULES_PLAN     = ("schedule", "ตารางเวลา", "pm plan", "action items", "วางแผน")
+_RULES_EDIT     = ("แก้ไข", "modify", "update file", "เปลี่ยน")
+
+
+def _fallback_intent_from_rules(history: list[str]) -> dict[str, Any]:
+    """
+    Rule-based intent dict matching INTENT_PARSER_SCHEMA. Used when the LLM
+    parse_intent path fails. Order mirrors the system-prompt disambiguation
+    rules so behavior is consistent. Confidence is capped at 0.55 so the
+    orchestrator's clarification loop refines it.
+    """
+    text = " ".join(history).lower() if history else ""
+    raw_text = " ".join(history) if history else ""
+
+    if any(kw in text for kw in _RULES_LOOKUP_DEF):
+        return _build_fallback("lookup", raw_text, confidence=0.55,
+                               is_definition=True, is_simple_lookup=True)
+    if any(kw in text for kw in _RULES_EXCEL):
+        return _build_fallback("excel", raw_text, confidence=0.50)
+    if any(kw in text for kw in _RULES_REPORT):
+        return _build_fallback("report", raw_text, confidence=0.50)
+    if any(kw in text for kw in _RULES_VISION):
+        return _build_fallback("vision", raw_text, confidence=0.50)
+    if any(kw in text for kw in _RULES_CALC):
+        return _build_fallback("calc", raw_text, confidence=0.50)
+    if any(kw in text for kw in _RULES_ANALYZE):
+        return _build_fallback("analyze", raw_text, confidence=0.50)
+    if any(kw in text for kw in _RULES_PLAN):
+        return _build_fallback("plan", raw_text, confidence=0.45)
+    if any(kw in text for kw in _RULES_EDIT):
+        return _build_fallback("edit", raw_text, confidence=0.45)
+    # Rule 5 (system prompt): ambiguous query about equipment -> lookup (safest;
+    # CONFIDENTIAL classification then runs egress check downstream).
+    return _build_fallback("lookup", raw_text, confidence=0.35,
+                           is_simple_lookup=True)
+
+
+def _extract_fallback_subject(text: str) -> str:
+    """
+    Crude noun-phrase pick for fallback. Prefer ALL-CAPS engineering codes
+    (SHIBAURA, MAKINO, M-101, ASTM, B-2) then alpha-numeric machine IDs,
+    else longest non-stopword token.
+    """
+    if not text:
+        return ""
+    code_match = re.search(r"\b[A-Z][A-Z0-9\-]{2,}\b", text)
+    if code_match:
+        # strip trailing dashes (e.g. "MAKINO-a51nx" -> "MAKINO-" -> "MAKINO")
+        return code_match.group(0).rstrip("-")
+    tokens = [
+        t.strip(".,!?:;\"'()") for t in text.split()
+        if len(t.strip(".,!?:;\"'()")) >= 3 and not t.strip(".,!?:;\"'()").isnumeric()
+    ]
+    if not tokens:
+        return ""
+    stop = {"the", "and", "for", "what", "how", "this", "that", "with", "from",
+            "ที่", "และ", "ของ", "หรือ", "ครับ", "ค่ะ"}
+    candidates = [t for t in tokens if t.lower() not in stop]
+    return max(candidates, key=len) if candidates else max(tokens, key=len)
+
+
+def _build_fallback(
+    action: str,
+    raw_text: str,
+    *,
+    confidence: float,
+    is_definition: bool = False,
+    is_simple_lookup: bool = False,
+) -> dict[str, Any]:
+    """Common scaffold producing a schema-valid intent dict."""
+    subject = _extract_fallback_subject(raw_text)
+    return {
+        "action": action,
+        "subject": subject,
+        "scope": "",
+        "constraints": {},
+        "confidence": confidence,
+        "missing": [] if subject else ["subject"],
+        "alternatives": [],
+        "is_definition": is_definition,
+        "is_standard_reference": False,
+        "needs_grounding": False,
+        "feed_to_llm": False,
+        "is_recent": False,
+        "is_research": False,
+        "is_simple_lookup": is_simple_lookup,
+        "_fallback": True,
+    }
 
 
 # ============================================================
